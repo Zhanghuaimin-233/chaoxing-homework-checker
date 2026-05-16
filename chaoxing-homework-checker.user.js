@@ -82,11 +82,16 @@
             GM_xmlhttpRequest({
                 method: "GET",
                 url: url,
+                headers: {
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+                },
                 onload: function(r) {
                     if (r.status >= 200 && r.status < 300) resolve(r.responseText);
-                    else reject(new Error("HTTP " + r.status));
+                    else reject(new Error("HTTP " + r.status + " for " + url.substring(0, 80)));
                 },
-                onerror: function() { reject(new Error("Network error")); }
+                onerror: function(e) {
+                    reject(new Error("Network error for " + url.substring(0, 80)));
+                }
             });
         });
     }
@@ -126,12 +131,20 @@
     }
 
     async function fetchWorkEnc(courseId, classId, cpi) {
-        var url = "https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/stu?courseid="
-            + courseId + "&clazzid=" + classId + "&cpi=" + cpi + "&v=2";
+        // Use stucoursemiddle entry point which redirects to the actual course page
+        var url = "https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid="
+            + courseId + "&clazzid=" + classId + "&cpi=" + cpi + "&ismooc2=1&v=2";
         var html = await gmFetch(url);
         var doc = parseHTML(html);
         var weEl = doc.getElementById("workEnc");
         var encEl = doc.getElementById("enc");
+        // Also try to extract enc from URL if page redirected
+        if (!weEl) {
+            var urlMatch = html.match(/enc=([a-f0-9]{32})/);
+            if (urlMatch) {
+                return { workEnc: urlMatch[1], enc: urlMatch[1] };
+            }
+        }
         return {
             workEnc: weEl ? weEl.value : "",
             enc: encEl ? encEl.value : ""
@@ -140,9 +153,9 @@
 
     async function fetchHomeworkList(courseId, classId, cpi, workEnc, pageNum) {
         pageNum = pageNum || 1;
-        var url = "https://mooc1.chaoxing.com/mooc2/work/list?courseId="
+        var url = "https://mooc1.chaoxing.com/mooc-ans/mooc2/work/list?courseId="
             + courseId + "&classId=" + classId + "&cpi=" + cpi
-            + "&ut=s&enc=" + workEnc + "&pageNum=" + pageNum;
+            + "&enc=" + workEnc + "&pageNum=" + pageNum;
         var html = await gmFetch(url);
         var doc = parseHTML(html);
         var items = [];
@@ -159,11 +172,17 @@
                 });
             }
         });
+        // Parse pagination: count numbered li elements in .pageDiv
         var totalPages = 1;
         var pagingEl = doc.getElementById("page");
         if (pagingEl) {
-            var pa = pagingEl.getAttribute("pagenum");
-            if (pa) totalPages = parseInt(pa) || 1;
+            var pageLis = pagingEl.querySelectorAll("li");
+            var maxPage = 1;
+            pageLis.forEach(function(li) {
+                var num = parseInt(li.textContent.trim());
+                if (!isNaN(num) && num > maxPage) maxPage = num;
+            });
+            totalPages = maxPage;
         }
         return { items: items, totalPages: totalPages };
     }
@@ -172,7 +191,7 @@
         try {
             var enc = await fetchWorkEnc(course.courseId, course.classId, course.cpi);
             if (!enc.workEnc) {
-                return Object.assign({}, course, { homework: [], error: "No workEnc" });
+                return Object.assign({}, course, { homework: [], error: "无法获取作业密钥(workEnc)" });
             }
             var all = [];
             var page = 1;
@@ -275,7 +294,12 @@
         if (!cachedData) return;
         var html = "";
         var count = 0;
+        var errorCount = 0;
         cachedData.forEach(function(c) {
+            if (c.error) {
+                errorCount++;
+                return;
+            }
             if (!c.homework || !c.homework.length) return;
             var hw = c.homework;
             if (cfilter === "pending") {
@@ -314,6 +338,11 @@
             html = '<div class="cxhw-em">' +
                 (cfilter === "all" ? "暂无作业数据" : "没有符合条件的作业") +
                 '</div>';
+        }
+        // Show error summary if any
+        if (errorCount > 0) {
+            html = '<div class="cxhw-er" style="margin:8px 24px;padding:8px 12px;font-size:12px;">' +
+                errorCount + ' 个课程加载失败（可能是已结课或权限不足）</div>' + html;
         }
         document.getElementById("cxhw-body").innerHTML = html;
         document.getElementById("cxhw-cnt").textContent = count;
