@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         学习通作业统一查看
 // @namespace    https://github.com/chaoxing-homework-checker
-// @version      1.1.0
+// @version      1.2.0
 // @description  检测学习通当前账号所有课程的作业情况并统一显示
 // @author       Assistant
 // @match        *://*.chaoxing.com/*
@@ -23,7 +23,7 @@
 
     const CONFIG = { concurrency: 3, requestDelay: 500, cacheTime: 30 * 60 * 1000, requestTimeout: 15000, maxRetries: 2 };
 
-    // ===== Styles (#8: use GM_addStyle, #13: template literal) =====
+    // ===== Styles =====
     GM_addStyle(`
         #cxhw-panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:920px;max-height:85vh;background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);z-index:999999;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;display:none;overflow:hidden}
         #cxhw-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:999998;display:none}
@@ -37,6 +37,7 @@
         .cxhw-fb:hover:not(.on){border-color:#667eea;color:#667eea}
         #cxhw-hidefin{border-style:dashed;font-size:12px;padding:4px 10px}
         #cxhw-hidefin.on{background:#6c757d;border-color:#6c757d}
+        #cxhw-expand{border-style:dashed;font-size:12px;padding:4px 10px}
         .cxhw-sts{margin-left:auto;font-size:13px;color:#6c757d}
         .cxhw-sts b{color:#667eea}
         .cxhw-cnt{overflow-y:auto;max-height:calc(85vh - 200px)}
@@ -80,7 +81,10 @@
     // ===== Utility =====
     function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-    // #6: add timeout + ontimeout
+    function isCacheValid() {
+        return cachedData && cacheTime > 0 && (Date.now() - cacheTime) < CONFIG.cacheTime;
+    }
+
     function gmFetch(url) {
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
@@ -98,13 +102,11 @@
         });
     }
 
-    // #10: retry with backoff
-    async function gmFetchWithRetry(url, retries) {
-        retries = retries || 0;
+    async function gmFetchWithRetry(url, retries = 0) {
         try {
             return await gmFetch(url);
         } catch (e) {
-            if (retries < CONFIG.maxRetries && /Timeout|Network error|HTTP 5/.test(e.message)) {
+            if (retries < CONFIG.maxRetries && /Timeout|Network error|HTTP 5\d{2}/.test(e.message)) {
                 await delay(1000 * (retries + 1));
                 return gmFetchWithRetry(url, retries + 1);
             }
@@ -122,12 +124,22 @@
         return d.innerHTML;
     }
 
-    // #2: validate numeric IDs
     function isValidId(v) { return /^\d+$/.test(String(v)); }
+
+    // P0: block javascript: protocol
+    function safeUrl(u) {
+        try {
+            const parsed = new URL(u);
+            return (parsed.protocol === "https:" || parsed.protocol === "http:") ? u : "";
+        } catch { return ""; }
+    }
+
+    function buildCourseUrl(c) {
+        return "https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid=" + c.courseId + "&clazzid=" + c.classId + "&cpi=" + c.cpi + "&ismooc2=1&v=2";
+    }
 
 
     // ===== Core Logic =====
-    // #7: JSON.parse with try-catch
     async function fetchCourseList() {
         const text = await gmFetchWithRetry("https://mooc1-api.chaoxing.com/mycourse/backclazzdata?view=json&rss=1");
         let data;
@@ -141,7 +153,6 @@
             data.channelList.forEach(ch => {
                 if (ch.content && ch.content.course && ch.content.course.data) {
                     ch.content.course.data.forEach(c => {
-                        // #2: only include courses with valid numeric IDs
                         if (!isValidId(c.id) || !isValidId(ch.content.id) || !isValidId(ch.content.cpi)) return;
                         courses.push({
                             courseId: c.id,
@@ -160,8 +171,7 @@
     }
 
     async function fetchWorkEnc(courseId, classId, cpi) {
-        const url = "https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid="
-            + courseId + "&clazzid=" + classId + "&cpi=" + cpi + "&ismooc2=1&v=2";
+        const url = buildCourseUrl({ courseId, classId, cpi });
         const html = await gmFetchWithRetry(url);
         const doc = parseHTML(html);
         const weEl = doc.getElementById("workEnc");
@@ -169,6 +179,9 @@
         if (!weEl) {
             const urlMatch = html.match(/enc=([a-f0-9]{32})/);
             if (urlMatch) return { workEnc: urlMatch[1], enc: urlMatch[1] };
+            // P1: informative error
+            const snippet = html.substring(0, 200).replace(/\s+/g, " ");
+            throw new Error("未找到workEnc（页面可能已变更或未登录），响应片段: " + snippet);
         }
         return {
             workEnc: weEl ? weEl.value : "",
@@ -176,8 +189,7 @@
         };
     }
 
-    async function fetchHomeworkList(courseId, classId, cpi, workEnc, pageNum) {
-        pageNum = pageNum || 1;
+    async function fetchHomeworkList(courseId, classId, cpi, workEnc, pageNum = 1) {
         const url = "https://mooc1.chaoxing.com/mooc-ans/mooc2/work/list?courseId="
             + courseId + "&classId=" + classId + "&cpi=" + cpi
             + "&enc=" + workEnc + "&pageNum=" + pageNum;
@@ -193,16 +205,17 @@
                     title: titleEl.textContent.trim(),
                     status: statusEl ? statusEl.textContent.trim() : "",
                     deadline: timeEl ? timeEl.textContent.trim() : "",
-                    // #1: store raw URL, sanitize at render time
                     url: li.getAttribute("data") || ""
                 });
             }
         });
+        // Robust pagination: prefer .xl-active sibling count
         let totalPages = 1;
         const pagingEl = doc.getElementById("page");
         if (pagingEl) {
             let maxPage = 1;
             pagingEl.querySelectorAll("li").forEach(li => {
+                if (li.classList.contains("xl-prevPage") || li.classList.contains("xl-nextPage")) return;
                 const num = parseInt(li.textContent.trim());
                 if (!isNaN(num) && num > maxPage) maxPage = num;
             });
@@ -214,9 +227,6 @@
     async function fetchCourseHomework(course) {
         try {
             const enc = await fetchWorkEnc(course.courseId, course.classId, course.cpi);
-            if (!enc.workEnc) {
-                return Object.assign({}, course, { homework: [], error: "无法获取作业密钥(workEnc)" });
-            }
             let all = [];
             let page = 1;
             let total = 1;
@@ -233,13 +243,17 @@
         }
     }
 
-    async function fetchAllHomework(courses) {
+    // P2: progress callback
+    async function fetchAllHomework(courses, onProgress) {
         const results = new Array(courses.length);
+        let done = 0;
         let idx = 0;
         async function worker() {
             while (idx < courses.length) {
                 const i = idx++;
                 results[i] = await fetchCourseHomework(courses[i]);
+                done++;
+                if (onProgress) onProgress(done, courses.length);
             }
         }
         const workers = [];
@@ -250,7 +264,11 @@
 
 
     // ===== UI =====
-    let panel, overlay, cachedData = null, cacheTime = 0, cfilter = "all", hideFinished = false, loading = false;
+    let panel, overlay, cachedData = null, cacheTime = 0, loading = false;
+
+    // P3: persist filter state
+    let cfilter = GM_getValue("cxhw_cfilter", "all");
+    let hideFinished = GM_getValue("cxhw_hideFinished", false);
 
     function isCourseActive(course) {
         if (course.isretire === 1) return false;
@@ -290,6 +308,7 @@
                 '<button class="cxhw-fb" data-f="submitted">待批改</button>' +
                 '<button class="cxhw-fb" data-f="completed">已完成</button>' +
                 '<button class="cxhw-fb" id="cxhw-hidefin">&#9670; 隐藏已结课</button>' +
+                '<button class="cxhw-fb" id="cxhw-expand">展开/折叠</button>' +
                 '<span class="cxhw-sts">共 <b id="cxhw-cnt">0</b> 项作业</span>' +
             '</div>' +
             '<div class="cxhw-cnt" id="cxhw-body">' +
@@ -304,9 +323,20 @@
         document.getElementById("cxhw-xbtn").onclick = toggle;
         document.getElementById("cxhw-rfbtn").onclick = doRefresh;
 
+        // Restore persisted filter state
+        if (cfilter !== "all") {
+            panel.querySelectorAll(".cxhw-fb[data-f]").forEach(b => {
+                b.classList.toggle("on", b.getAttribute("data-f") === cfilter);
+            });
+        }
+        if (hideFinished) {
+            document.getElementById("cxhw-hidefin").classList.add("on");
+        }
+
         panel.querySelectorAll(".cxhw-fb[data-f]").forEach(b => {
             b.onclick = () => {
                 cfilter = b.getAttribute("data-f");
+                GM_setValue("cxhw_cfilter", cfilter);
                 panel.querySelectorAll(".cxhw-fb[data-f]").forEach(x => x.classList.remove("on"));
                 b.classList.add("on");
                 render();
@@ -315,27 +345,36 @@
 
         document.getElementById("cxhw-hidefin").onclick = function() {
             hideFinished = !hideFinished;
+            GM_setValue("cxhw_hideFinished", hideFinished);
             this.classList.toggle("on", hideFinished);
             render();
         };
 
-        // #11: event delegation for course headers and homework items
+        // P3: expand/collapse all
+        let allExpanded = false;
+        document.getElementById("cxhw-expand").onclick = () => {
+            allExpanded = !allExpanded;
+            document.querySelectorAll(".cxhw-ch").forEach(ch => {
+                ch.classList.toggle("open", allExpanded);
+            });
+        };
+
+        // Event delegation for course headers and homework items
         const body = document.getElementById("cxhw-body");
         body.addEventListener("click", e => {
-            // Course header toggle
             const ch = e.target.closest(".cxhw-ch");
             if (ch && !e.target.closest("a")) {
                 ch.classList.toggle("open");
                 return;
             }
-            // Homework item click
             const hi = e.target.closest(".cxhw-hi[data-url]");
             if (hi) {
-                window.open(hi.getAttribute("data-url"), "_blank");
+                const url = safeUrl(hi.getAttribute("data-url"));
+                if (url) window.open(url, "_blank");
             }
         });
 
-        // #14: ESC key to close
+        // ESC key to close
         document.addEventListener("keydown", e => {
             if (e.key === "Escape" && panel.style.display === "block") toggle();
         });
@@ -345,7 +384,6 @@
         const vis = panel.style.display === "block";
         panel.style.display = vis ? "none" : "block";
         overlay.style.display = vis ? "none" : "block";
-        // #9: auto-load on open if no cache
         if (!vis && !cachedData) loadData();
     }
 
@@ -373,8 +411,7 @@
             const pend = c.homework.filter(h => h.status === "未交").length;
             const wait = c.homework.filter(h => h.status === "待批阅" || h.status === "待批改").length;
             const done = c.homework.filter(h => h.status === "已完成").length;
-            // #2: courseUrl uses validated numeric IDs
-            const courseUrl = "https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid=" + c.courseId + "&clazzid=" + c.classId + "&cpi=" + c.cpi + "&ismooc2=1&v=2";
+            const courseUrl = safeUrl(buildCourseUrl(c));
             html += '<div class="cxhw-cs">';
             html += '<div class="cxhw-ch">';
             html += '<span class="cxhw-cn"><a href="' + courseUrl + '" target="_blank" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none;">' + esc(c.name) + '</a></span>';
@@ -384,13 +421,12 @@
             html += '<span class="g">' + done + ' 完成</span> ';
             html += '<span class="cxhw-ar">&#9660;</span></span></div>';
             html += '<div class="cxhw-hl">';
-            // #1: use data-url attribute + event delegation instead of inline onclick
             hw.forEach(h => {
                 const sc = h.status === "未交" ? "cxhw-ss-nj"
                     : (h.status === "待批阅" || h.status === "待批改") ? "cxhw-ss-dp"
                     : h.status === "已完成" ? "cxhw-ss-ok" : "cxhw-ss-ot";
-                const safeUrl = h.url ? esc(h.url) : "";
-                html += '<div class="cxhw-hi"' + (safeUrl ? ' data-url="' + safeUrl + '"' : '') + '><div>';
+                const hwUrl = h.url ? safeUrl(h.url) : "";
+                html += '<div class="cxhw-hi"' + (hwUrl ? ' data-url="' + esc(hwUrl) + '"' : '') + '><div>';
                 html += '<div class="cxhw-ht">' + esc(h.title) + '</div>';
                 if (h.deadline) html += '<div class="cxhw-hd">&#9200; ' + esc(h.deadline) + '</div>';
                 html += '</div><span class="cxhw-ss ' + sc + '">' + esc(h.status) + '</span></div>';
@@ -411,7 +447,6 @@
         updateCacheInfo();
     }
 
-    // #16: guard against negative cache time
     function updateCacheInfo() {
         const el = document.getElementById("cxhw-cc");
         if (cacheTime > 0) {
@@ -420,13 +455,11 @@
         }
     }
 
-    // #3: loading guard to prevent race condition
     async function loadData() {
         if (loading) return;
         loading = true;
         try {
-            const now = Date.now();
-            if (cachedData && (now - cacheTime) < CONFIG.cacheTime) { render(); return; }
+            if (isCacheValid()) { render(); return; }
             showLoading();
             const courses = await fetchCourseList();
             if (!courses.length) {
@@ -434,15 +467,16 @@
                     '<div class="cxhw-er">未找到任何课程，请确认已登录学习通</div>';
                 return;
             }
-            const coursesToFetch = hideFinished ? courses.filter(isCourseActive) : courses;
-            const skipped = courses.length - coursesToFetch.length;
-            showLoading("正在加载 " + coursesToFetch.length + " 个课程的作业数据..." + (skipped > 0 ? "（跳过 " + skipped + " 个已结课课程）" : ""));
-            cachedData = await fetchAllHomework(coursesToFetch);
-            cacheTime = now;
+            // P2: always fetch ALL courses for cache integrity, filter in render()
+            showLoading("正在加载 " + courses.length + " 个课程的作业数据...");
+            cachedData = await fetchAllHomework(courses, (done, total) => {
+                showLoading("已加载 " + done + "/" + total + " 个课程...");
+            });
+            cacheTime = Date.now();
             try {
                 GM_setValue("cxhw_cache", JSON.stringify(cachedData));
                 GM_setValue("cxhw_cache_time", cacheTime);
-            } catch(e) {}
+            } catch(e) { console.warn("[ChaoxingHW] Failed to save cache:", e); }
             render();
         } catch (e) {
             document.getElementById("cxhw-body").innerHTML =
@@ -461,7 +495,6 @@
     }
 
     // ===== Init =====
-    // #9: auto-load if valid cache exists
     function init() {
         try {
             const saved = GM_getValue("cxhw_cache", null);
@@ -470,12 +503,9 @@
                 cachedData = JSON.parse(saved);
                 cacheTime = savedTime;
             }
-        } catch (e) {}
+        } catch (e) { console.warn("[ChaoxingHW] Failed to load cache:", e); }
         createUI();
-        // Auto-load if no cache or cache expired
-        if (!cachedData || (Date.now() - cacheTime) >= CONFIG.cacheTime) {
-            loadData();
-        }
+        if (!isCacheValid()) loadData();
     }
 
     if (document.readyState === "complete") init();
