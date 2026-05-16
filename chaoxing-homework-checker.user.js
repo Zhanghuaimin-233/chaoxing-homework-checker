@@ -434,8 +434,10 @@
                     '<div class="cxhw-er">未找到任何课程，请确认已登录学习通</div>';
                 return;
             }
-            showLoading("正在加载 " + courses.length + " 个课程的作业数据...");
-            cachedData = await fetchAllHomework(courses);
+            const coursesToFetch = hideFinished ? courses.filter(isCourseActive) : courses;
+            const skipped = courses.length - coursesToFetch.length;
+            showLoading("正在加载 " + coursesToFetch.length + " 个课程的作业数据..." + (skipped > 0 ? "（跳过 " + skipped + " 个已结课课程）" : ""));
+            cachedData = await fetchAllHomework(coursesToFetch);
             cacheTime = now;
             try {
                 GM_setValue("cxhw_cache", JSON.stringify(cachedData));
