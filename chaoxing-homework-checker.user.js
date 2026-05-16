@@ -18,6 +18,9 @@
 (function() {
     "use strict";
 
+    // Skip iframes — only inject UI in top-level window
+    if (window !== window.top) return;
+
     const CONFIG = { concurrency: 3, requestDelay: 500, cacheTime: 30 * 60 * 1000, requestTimeout: 15000, maxRetries: 2 };
 
     // ===== Styles (#8: use GM_addStyle, #13: template literal) =====
