@@ -421,10 +421,10 @@
     async function loadData() {
         if (loading) return;
         loading = true;
-        showLoading();
         try {
             const now = Date.now();
             if (cachedData && (now - cacheTime) < CONFIG.cacheTime) { render(); return; }
+            showLoading();
             const courses = await fetchCourseList();
             if (!courses.length) {
                 document.getElementById("cxhw-body").innerHTML =
@@ -450,6 +450,7 @@
     }
 
     function doRefresh() {
+        if (loading) return;
         cachedData = null;
         cacheTime = 0;
         try { GM_setValue("cxhw_cache", null); GM_setValue("cxhw_cache_time", 0); } catch(e) {}
