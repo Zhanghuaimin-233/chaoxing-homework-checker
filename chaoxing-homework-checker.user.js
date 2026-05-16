@@ -41,6 +41,7 @@
         ".cxhw-ch{padding:14px 24px;background:#f8f9fa;cursor:pointer;display:flex;justify-content:space-between;align-items:center}",
         ".cxhw-ch:hover{background:#e9ecef}",
         ".cxhw-cn{font-weight:600;font-size:14px;color:#343a40}",
+        ".cxhw-cn a:hover{color:#667eea;text-decoration:underline!important}",
         ".cxhw-ci{font-size:12px;color:#6c757d}",
         ".cxhw-ci .r{color:#dc3545;font-weight:600}",
         ".cxhw-ci .g{color:#28a745}",
@@ -50,7 +51,7 @@
         ".cxhw-ch.open+.cxhw-hl{display:block}",
         ".cxhw-hi{padding:12px 24px 12px 48px;border-bottom:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center}",
         ".cxhw-hi:last-child{border-bottom:none}",
-        ".cxhw-hi:hover{background:#f8f9fa}",
+        ".cxhw-hi:hover{background:#f0f4ff}",
         ".cxhw-ht{font-size:13px;color:#343a40}",
         ".cxhw-hd{font-size:11px;color:#6c757d;margin-top:2px}",
         ".cxhw-ss{padding:3px 10px;border-radius:10px;font-size:11px;font-weight:500;white-space:nowrap}",
@@ -314,9 +315,10 @@
             var pend = c.homework.filter(function(h) { return h.status === "未交"; }).length;
             var wait = c.homework.filter(function(h) { return h.status === "待批阅" || h.status === "待批改"; }).length;
             var done = c.homework.filter(function(h) { return h.status === "已完成"; }).length;
+            var courseUrl = "https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid=" + c.courseId + "&clazzid=" + c.classId + "&cpi=" + c.cpi + "&ismooc2=1&v=2";
             html += '<div class="cxhw-cs">';
             html += '<div class="cxhw-ch" onclick="this.classList.toggle(\'open\')">';
-            html += '<span class="cxhw-cn">' + esc(c.name) + '</span>';
+            html += '<span class="cxhw-cn"><a href="' + courseUrl + '" target="_blank" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none;">' + esc(c.name) + '</a></span>';
             html += '<span class="cxhw-ci">';
             if (pend) html += '<span class="r">' + pend + ' 未交</span> ';
             if (wait) html += wait + ' 待批改 ';
@@ -327,7 +329,8 @@
                 var sc = h.status === "未交" ? "cxhw-ss-nj"
                     : (h.status === "待批阅" || h.status === "待批改") ? "cxhw-ss-dp"
                     : h.status === "已完成" ? "cxhw-ss-ok" : "cxhw-ss-ot";
-                html += '<div class="cxhw-hi"><div>';
+                var hwUrl = h.url || "";
+                html += '<div class="cxhw-hi"' + (hwUrl ? ' style="cursor:pointer" onclick="window.open(\'' + hwUrl.replace(/'/g, "\\'") + '\',\'_blank\')"' : '') + '><div>';
                 html += '<div class="cxhw-ht">' + esc(h.title) + '</div>';
                 if (h.deadline) html += '<div class="cxhw-hd">&#9200; ' + esc(h.deadline) + '</div>';
                 html += '</div><span class="cxhw-ss ' + sc + '">' + esc(h.status) + '</span></div>';
