@@ -8,8 +8,11 @@
 - 按课程分组显示，支持展开/折叠
 - 状态标签：未交（红）、待批改（黄）、已完成（绿）、其他（灰）
 - 筛选按钮：全部 / 未交 / 待批改 / 已完成
+- 「隐藏已结课」按钮，过滤已过期课程并跳过其作业请求
+- 课程名称点击跳转课程作业列表页，作业条目点击跳转作业详情页
 - 30分钟本地缓存，减少重复请求
 - 并发控制（3路），避免触发平台限流
+- 请求超时15秒，失败自动重试2次
 
 ## 安装
 
@@ -34,15 +37,14 @@
 | 步骤 | 端点 | 说明 |
 |------|------|------|
 | 课程列表 | `mooc1-api.chaoxing.com/mycourse/backclazzdata` | JSON 接口，返回所有已加入课程 |
-| 获取 workEnc | `mooc2-ans.chaoxing.com/mooc2-ans/mycourse/stu` | HTML 页面，解析 `<input id="workEnc">` |
-| 作业列表 | `mooc1.chaoxing.com/mooc2/work/list` | HTML 页面，需 `enc` + `ut=s` 参数 |
+| 获取 workEnc | `mooc1.chaoxing.com/visit/stucoursemiddle` | 重定向到课程页，解析 `<input id="workEnc">` |
+| 作业列表 | `mooc1.chaoxing.com/mooc-ans/mooc2/work/list` | HTML 页面，需 `enc` 参数 |
 
 关键参数：
-- `courseId` — 课程 ID
-- `classId` — 班级 ID
-- `cpi` — 课程人员 ID
-- `workEnc` — 每课程加密令牌，从步骤 2 的 HTML 中提取
-- `ut=s` — 必须参数，标识学生身份
+- `courseId` — 课程 ID（纯数字）
+- `classId` — 班级 ID（纯数字）
+- `cpi` — 课程人员 ID（纯数字）
+- `workEnc` — 每课程加密令牌，从课程页 HTML 中提取
 
 ## 技术栈
 
@@ -57,6 +59,7 @@
 - 仅支持学生账号（`roletype: 3`）
 - 作业状态依赖平台 HTML 结构，平台更新可能导致解析失效
 - 缓存期间不会自动刷新，需手动点击刷新按钮
+- 已结课课程的判断基于 `isretire` 字段和 `endDate`，可能有误判
 
 ## 文件结构
 
@@ -75,4 +78,5 @@ chaoxing-homework-checker/
 3. 尝试作业列表 JSON API → 返回 403，不可用
 4. 通过 Codex 探索发现 workEnc 机制：需先从课程页提取加密令牌
 5. 确认作业列表为 HTML 接口，解析 `<li>` 元素获取作业数据
-6. 生成完整用户脚本（378 行）
+6. 生成完整用户脚本
+7. Codex 审查发现 17 个问题（XSS、竞态、超时等），全部修复

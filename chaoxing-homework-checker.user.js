@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         学习通作业统一查看
 // @namespace    https://github.com/chaoxing-homework-checker
-// @version      1.0.0
+// @version      1.1.0
 // @description  检测学习通当前账号所有课程的作业情况并统一显示
 // @author       Assistant
 // @match        *://*.chaoxing.com/*
@@ -17,84 +17,96 @@
 
 (function() {
     "use strict";
-    console.log("[ChaoxingHW] Script loaded");
 
-    var CONFIG = { concurrency: 3, requestDelay: 500, cacheTime: 30 * 60 * 1000 };
+    const CONFIG = { concurrency: 3, requestDelay: 500, cacheTime: 30 * 60 * 1000, requestTimeout: 15000, maxRetries: 2 };
 
-    // ===== Styles =====
-    var css = [
-        "#cxhw-panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:920px;max-height:85vh;background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);z-index:999999;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;display:none;overflow:hidden}",
-        "#cxhw-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:999998;display:none}",
-        ".cxhw-hdr{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;padding:18px 24px;display:flex;justify-content:space-between;align-items:center}",
-        ".cxhw-hdr h2{margin:0;font-size:18px;font-weight:600}",
-        ".cxhw-x{background:rgba(255,255,255,.2);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px}",
-        ".cxhw-x:hover{background:rgba(255,255,255,.3)}",
-        ".cxhw-tb{padding:12px 24px;background:#f8f9fa;border-bottom:1px solid #e9ecef;display:flex;gap:10px;align-items:center}",
-        ".cxhw-fb{padding:5px 14px;border:1px solid #dee2e6;border-radius:16px;background:#fff;cursor:pointer;font-size:13px}",
-        ".cxhw-fb.on{background:#667eea;color:#fff;border-color:#667eea}",
-        ".cxhw-fb:hover:not(.on){border-color:#667eea;color:#667eea}",
-        ".cxhw-sts{margin-left:auto;font-size:13px;color:#6c757d}",
-        ".cxhw-sts b{color:#667eea}",
-        ".cxhw-cnt{overflow-y:auto;max-height:calc(85vh - 200px)}",
-        ".cxhw-cs{border-bottom:1px solid #e9ecef}",
-        ".cxhw-cs:last-child{border-bottom:none}",
-        ".cxhw-ch{padding:14px 24px;background:#f8f9fa;cursor:pointer;display:flex;justify-content:space-between;align-items:center}",
-        ".cxhw-ch:hover{background:#e9ecef}",
-        ".cxhw-cn{font-weight:600;font-size:14px;color:#343a40}",
-        ".cxhw-cn a:hover{color:#667eea;text-decoration:underline!important}",
-        ".cxhw-ci{font-size:12px;color:#6c757d}",
-        ".cxhw-ci .r{color:#dc3545;font-weight:600}",
-        ".cxhw-ci .g{color:#28a745}",
-        ".cxhw-ar{transition:transform .2s;color:#6c757d}",
-        ".cxhw-ch.open .cxhw-ar{transform:rotate(180deg)}",
-        ".cxhw-hl{display:none}",
-        ".cxhw-ch.open+.cxhw-hl{display:block}",
-        ".cxhw-hi{padding:12px 24px 12px 48px;border-bottom:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center}",
-        ".cxhw-hi:last-child{border-bottom:none}",
-        ".cxhw-hi:hover{background:#f0f4ff}",
-        ".cxhw-ht{font-size:13px;color:#343a40}",
-        ".cxhw-hd{font-size:11px;color:#6c757d;margin-top:2px}",
-        ".cxhw-ss{padding:3px 10px;border-radius:10px;font-size:11px;font-weight:500;white-space:nowrap}",
-        ".cxhw-ss-nj{background:#f8d7da;color:#721c24}",
-        ".cxhw-ss-dp{background:#fff3cd;color:#856404}",
-        ".cxhw-ss-ok{background:#d4edda;color:#155724}",
-        ".cxhw-ss-ot{background:#e2e3e5;color:#383d41}",
-        ".cxhw-ld{padding:60px 24px;text-align:center}",
-        ".cxhw-sp{width:36px;height:36px;border:3px solid #e9ecef;border-top-color:#667eea;border-radius:50%;animation:cxhw-ani 1s linear infinite;margin:0 auto 12px}",
-        "@keyframes cxhw-ani{to{transform:rotate(360deg)}}",
-        ".cxhw-em{padding:48px 24px;text-align:center;color:#6c757d;font-size:14px}",
-        ".cxhw-er{padding:16px 24px;background:#f8d7da;color:#721c24;margin:12px 24px;border-radius:6px;font-size:13px}",
-        ".cxhw-ft{padding:14px 24px;background:#f8f9fa;border-top:1px solid #e9ecef;display:flex;justify-content:space-between;align-items:center}",
-        ".cxhw-rf{padding:7px 18px;background:#667eea;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px}",
-        ".cxhw-rf:hover{background:#5a6fd6}",
-        ".cxhw-cc{font-size:11px;color:#6c757d}",
-        "#cxhw-tg{position:fixed;bottom:24px;right:24px;width:52px;height:52px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border:none;border-radius:50%;color:#fff;font-size:22px;cursor:pointer;box-shadow:0 4px 16px rgba(102,126,234,.4);z-index:999997;display:flex;align-items:center;justify-content:center}",
-        "#cxhw-tg:hover{transform:scale(1.1)}"
-    ].join("\n");
-    var style = document.createElement("style");
-    style.textContent = css;
-    document.head.appendChild(style);
+    // ===== Styles (#8: use GM_addStyle, #13: template literal) =====
+    GM_addStyle(`
+        #cxhw-panel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:920px;max-height:85vh;background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);z-index:999999;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;display:none;overflow:hidden}
+        #cxhw-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:999998;display:none}
+        .cxhw-hdr{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;padding:18px 24px;display:flex;justify-content:space-between;align-items:center}
+        .cxhw-hdr h2{margin:0;font-size:18px;font-weight:600}
+        .cxhw-x{background:rgba(255,255,255,.2);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px}
+        .cxhw-x:hover{background:rgba(255,255,255,.3)}
+        .cxhw-tb{padding:12px 24px;background:#f8f9fa;border-bottom:1px solid #e9ecef;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+        .cxhw-fb{padding:5px 14px;border:1px solid #dee2e6;border-radius:16px;background:#fff;cursor:pointer;font-size:13px}
+        .cxhw-fb.on{background:#667eea;color:#fff;border-color:#667eea}
+        .cxhw-fb:hover:not(.on){border-color:#667eea;color:#667eea}
+        #cxhw-hidefin{border-style:dashed;font-size:12px;padding:4px 10px}
+        #cxhw-hidefin.on{background:#6c757d;border-color:#6c757d}
+        .cxhw-sts{margin-left:auto;font-size:13px;color:#6c757d}
+        .cxhw-sts b{color:#667eea}
+        .cxhw-cnt{overflow-y:auto;max-height:calc(85vh - 200px)}
+        .cxhw-cs{border-bottom:1px solid #e9ecef}
+        .cxhw-cs:last-child{border-bottom:none}
+        .cxhw-ch{padding:14px 24px;background:#f8f9fa;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+        .cxhw-ch:hover{background:#e9ecef}
+        .cxhw-cn{font-weight:600;font-size:14px;color:#343a40}
+        .cxhw-cn a:hover{color:#667eea;text-decoration:underline!important}
+        .cxhw-ci{font-size:12px;color:#6c757d}
+        .cxhw-ci .r{color:#dc3545;font-weight:600}
+        .cxhw-ci .g{color:#28a745}
+        .cxhw-ar{transition:transform .2s;color:#6c757d}
+        .cxhw-ch.open .cxhw-ar{transform:rotate(180deg)}
+        .cxhw-hl{display:none}
+        .cxhw-ch.open+.cxhw-hl{display:block}
+        .cxhw-hi{padding:12px 24px 12px 48px;border-bottom:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center}
+        .cxhw-hi:last-child{border-bottom:none}
+        .cxhw-hi[data-url]{cursor:pointer}
+        .cxhw-hi[data-url]:hover{background:#f0f4ff}
+        .cxhw-ht{font-size:13px;color:#343a40}
+        .cxhw-hd{font-size:11px;color:#6c757d;margin-top:2px}
+        .cxhw-ss{padding:3px 10px;border-radius:10px;font-size:11px;font-weight:500;white-space:nowrap}
+        .cxhw-ss-nj{background:#f8d7da;color:#721c24}
+        .cxhw-ss-dp{background:#fff3cd;color:#856404}
+        .cxhw-ss-ok{background:#d4edda;color:#155724}
+        .cxhw-ss-ot{background:#e2e3e5;color:#383d41}
+        .cxhw-ld{padding:60px 24px;text-align:center}
+        .cxhw-sp{width:36px;height:36px;border:3px solid #e9ecef;border-top-color:#667eea;border-radius:50%;animation:cxhw-ani 1s linear infinite;margin:0 auto 12px}
+        @keyframes cxhw-ani{to{transform:rotate(360deg)}}
+        .cxhw-em{padding:48px 24px;text-align:center;color:#6c757d;font-size:14px}
+        .cxhw-er{padding:16px 24px;background:#f8d7da;color:#721c24;margin:12px 24px;border-radius:6px;font-size:13px}
+        .cxhw-ft{padding:14px 24px;background:#f8f9fa;border-top:1px solid #e9ecef;display:flex;justify-content:space-between;align-items:center}
+        .cxhw-rf{padding:7px 18px;background:#667eea;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px}
+        .cxhw-rf:hover{background:#5a6fd6}
+        .cxhw-cc{font-size:11px;color:#6c757d}
+        #cxhw-tg{position:fixed;bottom:24px;right:24px;width:52px;height:52px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border:none;border-radius:50%;color:#fff;font-size:22px;cursor:pointer;box-shadow:0 4px 16px rgba(102,126,234,.4);z-index:999997;display:flex;align-items:center;justify-content:center}
+        #cxhw-tg:hover{transform:scale(1.1)}
+    `);
 
     // ===== Utility =====
-    function delay(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+    function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+    // #6: add timeout + ontimeout
     function gmFetch(url) {
-        return new Promise(function(resolve, reject) {
+        return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
                 method: "GET",
-                url: url,
-                headers: {
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-                },
-                onload: function(r) {
+                url,
+                timeout: CONFIG.requestTimeout,
+                headers: { "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
+                onload: r => {
                     if (r.status >= 200 && r.status < 300) resolve(r.responseText);
                     else reject(new Error("HTTP " + r.status + " for " + url.substring(0, 80)));
                 },
-                onerror: function(e) {
-                    reject(new Error("Network error for " + url.substring(0, 80)));
-                }
+                onerror: () => reject(new Error("Network error for " + url.substring(0, 80))),
+                ontimeout: () => reject(new Error("Timeout for " + url.substring(0, 80)))
             });
         });
+    }
+
+    // #10: retry with backoff
+    async function gmFetchWithRetry(url, retries) {
+        retries = retries || 0;
+        try {
+            return await gmFetch(url);
+        } catch (e) {
+            if (retries < CONFIG.maxRetries && /Timeout|Network error|HTTP 5/.test(e.message)) {
+                await delay(1000 * (retries + 1));
+                return gmFetchWithRetry(url, retries + 1);
+            }
+            throw e;
+        }
     }
 
     function parseHTML(html) {
@@ -102,27 +114,40 @@
     }
 
     function esc(s) {
-        var d = document.createElement("div");
+        const d = document.createElement("div");
         d.textContent = s;
         return d.innerHTML;
     }
 
+    // #2: validate numeric IDs
+    function isValidId(v) { return /^\d+$/.test(String(v)); }
+
 
     // ===== Core Logic =====
+    // #7: JSON.parse with try-catch
     async function fetchCourseList() {
-        var text = await gmFetch("https://mooc1-api.chaoxing.com/mycourse/backclazzdata?view=json&rss=1");
-        var data = JSON.parse(text);
-        var courses = [];
+        const text = await gmFetchWithRetry("https://mooc1-api.chaoxing.com/mycourse/backclazzdata?view=json&rss=1");
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            throw new Error("课程列表API返回非JSON响应，可能未登录或会话过期");
+        }
+        const courses = [];
         if (data.channelList) {
-            data.channelList.forEach(function(ch) {
+            data.channelList.forEach(ch => {
                 if (ch.content && ch.content.course && ch.content.course.data) {
-                    ch.content.course.data.forEach(function(c) {
+                    ch.content.course.data.forEach(c => {
+                        // #2: only include courses with valid numeric IDs
+                        if (!isValidId(c.id) || !isValidId(ch.content.id) || !isValidId(ch.content.cpi)) return;
                         courses.push({
                             courseId: c.id,
                             classId: ch.content.id,
                             cpi: ch.content.cpi,
                             name: c.name,
-                            teacher: c.teacherfactor || ""
+                            teacher: c.teacherfactor || "",
+                            isretire: ch.content.isretire || 0,
+                            endDate: ch.content.endDate || ""
                         });
                     });
                 }
@@ -132,19 +157,15 @@
     }
 
     async function fetchWorkEnc(courseId, classId, cpi) {
-        // Use stucoursemiddle entry point which redirects to the actual course page
-        var url = "https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid="
+        const url = "https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid="
             + courseId + "&clazzid=" + classId + "&cpi=" + cpi + "&ismooc2=1&v=2";
-        var html = await gmFetch(url);
-        var doc = parseHTML(html);
-        var weEl = doc.getElementById("workEnc");
-        var encEl = doc.getElementById("enc");
-        // Also try to extract enc from URL if page redirected
+        const html = await gmFetchWithRetry(url);
+        const doc = parseHTML(html);
+        const weEl = doc.getElementById("workEnc");
+        const encEl = doc.getElementById("enc");
         if (!weEl) {
-            var urlMatch = html.match(/enc=([a-f0-9]{32})/);
-            if (urlMatch) {
-                return { workEnc: urlMatch[1], enc: urlMatch[1] };
-            }
+            const urlMatch = html.match(/enc=([a-f0-9]{32})/);
+            if (urlMatch) return { workEnc: urlMatch[1], enc: urlMatch[1] };
         }
         return {
             workEnc: weEl ? weEl.value : "",
@@ -154,51 +175,50 @@
 
     async function fetchHomeworkList(courseId, classId, cpi, workEnc, pageNum) {
         pageNum = pageNum || 1;
-        var url = "https://mooc1.chaoxing.com/mooc-ans/mooc2/work/list?courseId="
+        const url = "https://mooc1.chaoxing.com/mooc-ans/mooc2/work/list?courseId="
             + courseId + "&classId=" + classId + "&cpi=" + cpi
             + "&enc=" + workEnc + "&pageNum=" + pageNum;
-        var html = await gmFetch(url);
-        var doc = parseHTML(html);
-        var items = [];
-        doc.querySelectorAll("li[data]").forEach(function(li) {
-            var titleEl = li.querySelector(".overHidden2");
-            var statusEl = li.querySelector(".status");
-            var timeEl = li.querySelector(".time");
+        const html = await gmFetchWithRetry(url);
+        const doc = parseHTML(html);
+        const items = [];
+        doc.querySelectorAll("li[data]").forEach(li => {
+            const titleEl = li.querySelector(".overHidden2");
+            const statusEl = li.querySelector(".status");
+            const timeEl = li.querySelector(".time");
             if (titleEl) {
                 items.push({
                     title: titleEl.textContent.trim(),
                     status: statusEl ? statusEl.textContent.trim() : "",
                     deadline: timeEl ? timeEl.textContent.trim() : "",
+                    // #1: store raw URL, sanitize at render time
                     url: li.getAttribute("data") || ""
                 });
             }
         });
-        // Parse pagination: count numbered li elements in .pageDiv
-        var totalPages = 1;
-        var pagingEl = doc.getElementById("page");
+        let totalPages = 1;
+        const pagingEl = doc.getElementById("page");
         if (pagingEl) {
-            var pageLis = pagingEl.querySelectorAll("li");
-            var maxPage = 1;
-            pageLis.forEach(function(li) {
-                var num = parseInt(li.textContent.trim());
+            let maxPage = 1;
+            pagingEl.querySelectorAll("li").forEach(li => {
+                const num = parseInt(li.textContent.trim());
                 if (!isNaN(num) && num > maxPage) maxPage = num;
             });
             totalPages = maxPage;
         }
-        return { items: items, totalPages: totalPages };
+        return { items, totalPages };
     }
 
     async function fetchCourseHomework(course) {
         try {
-            var enc = await fetchWorkEnc(course.courseId, course.classId, course.cpi);
+            const enc = await fetchWorkEnc(course.courseId, course.classId, course.cpi);
             if (!enc.workEnc) {
                 return Object.assign({}, course, { homework: [], error: "无法获取作业密钥(workEnc)" });
             }
-            var all = [];
-            var page = 1;
-            var total = 1;
+            let all = [];
+            let page = 1;
+            let total = 1;
             do {
-                var res = await fetchHomeworkList(course.courseId, course.classId, course.cpi, enc.workEnc, page);
+                const res = await fetchHomeworkList(course.courseId, course.classId, course.cpi, enc.workEnc, page);
                 all = all.concat(res.items);
                 total = res.totalPages;
                 page++;
@@ -211,29 +231,39 @@
     }
 
     async function fetchAllHomework(courses) {
-        var results = new Array(courses.length);
-        var idx = 0;
+        const results = new Array(courses.length);
+        let idx = 0;
         async function worker() {
             while (idx < courses.length) {
-                var i = idx++;
+                const i = idx++;
                 results[i] = await fetchCourseHomework(courses[i]);
             }
         }
-        var workers = [];
-        for (var i = 0; i < CONFIG.concurrency; i++) workers.push(worker());
+        const workers = [];
+        for (let i = 0; i < CONFIG.concurrency; i++) workers.push(worker());
         await Promise.all(workers);
         return results;
     }
 
 
     // ===== UI =====
-    var panel, overlay, cachedData = null, cacheTime = 0, cfilter = "all";
+    let panel, overlay, cachedData = null, cacheTime = 0, cfilter = "all", hideFinished = false, loading = false;
+
+    function isCourseActive(course) {
+        if (course.isretire === 1) return false;
+        if (course.endDate) {
+            const end = new Date(course.endDate).getTime();
+            if (end < Date.now()) return false;
+        }
+        return true;
+    }
 
     function createUI() {
-        var btn = document.createElement("button");
+        const btn = document.createElement("button");
         btn.id = "cxhw-tg";
         btn.innerHTML = "&#128203;";
         btn.title = "查看所有作业";
+        btn.setAttribute("aria-label", "查看所有作业");
         btn.onclick = toggle;
         document.body.appendChild(btn);
 
@@ -244,16 +274,19 @@
 
         panel = document.createElement("div");
         panel.id = "cxhw-panel";
+        panel.setAttribute("role", "dialog");
+        panel.setAttribute("aria-label", "学习通作业查看器");
         panel.innerHTML =
             '<div class="cxhw-hdr">' +
                 '<h2>&#128218; 学习通作业查看器</h2>' +
-                '<button class="cxhw-x" id="cxhw-xbtn">&times;</button>' +
+                '<button class="cxhw-x" id="cxhw-xbtn" aria-label="关闭">&times;</button>' +
             '</div>' +
             '<div class="cxhw-tb">' +
                 '<button class="cxhw-fb on" data-f="all">全部</button>' +
                 '<button class="cxhw-fb" data-f="pending">未交</button>' +
                 '<button class="cxhw-fb" data-f="submitted">待批改</button>' +
                 '<button class="cxhw-fb" data-f="completed">已完成</button>' +
+                '<button class="cxhw-fb" id="cxhw-hidefin">&#9670; 隐藏已结课</button>' +
                 '<span class="cxhw-sts">共 <b id="cxhw-cnt">0</b> 项作业</span>' +
             '</div>' +
             '<div class="cxhw-cnt" id="cxhw-body">' +
@@ -268,20 +301,48 @@
         document.getElementById("cxhw-xbtn").onclick = toggle;
         document.getElementById("cxhw-rfbtn").onclick = doRefresh;
 
-        panel.querySelectorAll(".cxhw-fb").forEach(function(b) {
-            b.onclick = function() {
+        panel.querySelectorAll(".cxhw-fb[data-f]").forEach(b => {
+            b.onclick = () => {
                 cfilter = b.getAttribute("data-f");
-                panel.querySelectorAll(".cxhw-fb").forEach(function(x) { x.classList.remove("on"); });
+                panel.querySelectorAll(".cxhw-fb[data-f]").forEach(x => x.classList.remove("on"));
                 b.classList.add("on");
                 render();
             };
         });
+
+        document.getElementById("cxhw-hidefin").onclick = function() {
+            hideFinished = !hideFinished;
+            this.classList.toggle("on", hideFinished);
+            render();
+        };
+
+        // #11: event delegation for course headers and homework items
+        const body = document.getElementById("cxhw-body");
+        body.addEventListener("click", e => {
+            // Course header toggle
+            const ch = e.target.closest(".cxhw-ch");
+            if (ch && !e.target.closest("a")) {
+                ch.classList.toggle("open");
+                return;
+            }
+            // Homework item click
+            const hi = e.target.closest(".cxhw-hi[data-url]");
+            if (hi) {
+                window.open(hi.getAttribute("data-url"), "_blank");
+            }
+        });
+
+        // #14: ESC key to close
+        document.addEventListener("keydown", e => {
+            if (e.key === "Escape" && panel.style.display === "block") toggle();
+        });
     }
 
     function toggle() {
-        var vis = panel.style.display === "block";
+        const vis = panel.style.display === "block";
         panel.style.display = vis ? "none" : "block";
         overlay.style.display = vis ? "none" : "block";
+        // #9: auto-load on open if no cache
         if (!vis && !cachedData) loadData();
     }
 
@@ -293,31 +354,26 @@
 
     function render() {
         if (!cachedData) return;
-        var html = "";
-        var count = 0;
-        var errorCount = 0;
-        cachedData.forEach(function(c) {
-            if (c.error) {
-                errorCount++;
-                return;
-            }
+        let html = "";
+        let count = 0;
+        let errorCount = 0;
+        cachedData.forEach(c => {
+            if (c.error) { errorCount++; return; }
+            if (hideFinished && !isCourseActive(c)) return;
             if (!c.homework || !c.homework.length) return;
-            var hw = c.homework;
-            if (cfilter === "pending") {
-                hw = hw.filter(function(h) { return h.status === "未交"; });
-            } else if (cfilter === "submitted") {
-                hw = hw.filter(function(h) { return h.status === "待批阅" || h.status === "待批改"; });
-            } else if (cfilter === "completed") {
-                hw = hw.filter(function(h) { return h.status === "已完成"; });
-            }
+            let hw = c.homework;
+            if (cfilter === "pending") hw = hw.filter(h => h.status === "未交");
+            else if (cfilter === "submitted") hw = hw.filter(h => h.status === "待批阅" || h.status === "待批改");
+            else if (cfilter === "completed") hw = hw.filter(h => h.status === "已完成");
             if (!hw.length) return;
             count += hw.length;
-            var pend = c.homework.filter(function(h) { return h.status === "未交"; }).length;
-            var wait = c.homework.filter(function(h) { return h.status === "待批阅" || h.status === "待批改"; }).length;
-            var done = c.homework.filter(function(h) { return h.status === "已完成"; }).length;
-            var courseUrl = "https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid=" + c.courseId + "&clazzid=" + c.classId + "&cpi=" + c.cpi + "&ismooc2=1&v=2";
+            const pend = c.homework.filter(h => h.status === "未交").length;
+            const wait = c.homework.filter(h => h.status === "待批阅" || h.status === "待批改").length;
+            const done = c.homework.filter(h => h.status === "已完成").length;
+            // #2: courseUrl uses validated numeric IDs
+            const courseUrl = "https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid=" + c.courseId + "&clazzid=" + c.classId + "&cpi=" + c.cpi + "&ismooc2=1&v=2";
             html += '<div class="cxhw-cs">';
-            html += '<div class="cxhw-ch" onclick="this.classList.toggle(\'open\')">';
+            html += '<div class="cxhw-ch">';
             html += '<span class="cxhw-cn"><a href="' + courseUrl + '" target="_blank" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none;">' + esc(c.name) + '</a></span>';
             html += '<span class="cxhw-ci">';
             if (pend) html += '<span class="r">' + pend + ' 未交</span> ';
@@ -325,12 +381,13 @@
             html += '<span class="g">' + done + ' 完成</span> ';
             html += '<span class="cxhw-ar">&#9660;</span></span></div>';
             html += '<div class="cxhw-hl">';
-            hw.forEach(function(h) {
-                var sc = h.status === "未交" ? "cxhw-ss-nj"
+            // #1: use data-url attribute + event delegation instead of inline onclick
+            hw.forEach(h => {
+                const sc = h.status === "未交" ? "cxhw-ss-nj"
                     : (h.status === "待批阅" || h.status === "待批改") ? "cxhw-ss-dp"
                     : h.status === "已完成" ? "cxhw-ss-ok" : "cxhw-ss-ot";
-                var hwUrl = h.url || "";
-                html += '<div class="cxhw-hi"' + (hwUrl ? ' style="cursor:pointer" onclick="window.open(\'' + hwUrl.replace(/'/g, "\\'") + '\',\'_blank\')"' : '') + '><div>';
+                const safeUrl = h.url ? esc(h.url) : "";
+                html += '<div class="cxhw-hi"' + (safeUrl ? ' data-url="' + safeUrl + '"' : '') + '><div>';
                 html += '<div class="cxhw-ht">' + esc(h.title) + '</div>';
                 if (h.deadline) html += '<div class="cxhw-hd">&#9200; ' + esc(h.deadline) + '</div>';
                 html += '</div><span class="cxhw-ss ' + sc + '">' + esc(h.status) + '</span></div>';
@@ -342,7 +399,6 @@
                 (cfilter === "all" ? "暂无作业数据" : "没有符合条件的作业") +
                 '</div>';
         }
-        // Show error summary if any
         if (errorCount > 0) {
             html = '<div class="cxhw-er" style="margin:8px 24px;padding:8px 12px;font-size:12px;">' +
                 errorCount + ' 个课程加载失败（可能是已结课或权限不足）</div>' + html;
@@ -352,27 +408,33 @@
         updateCacheInfo();
     }
 
+    // #16: guard against negative cache time
     function updateCacheInfo() {
-        var el = document.getElementById("cxhw-cc");
-        if (cacheTime) {
-            var m = Math.floor((Date.now() - cacheTime) / 60000);
-            el.textContent = "缓存: " + m + " 分钟前";
+        const el = document.getElementById("cxhw-cc");
+        if (cacheTime > 0) {
+            const m = Math.floor((Date.now() - cacheTime) / 60000);
+            el.textContent = m >= 0 ? ("缓存: " + m + " 分钟前") : "";
         }
     }
 
+    // #3: loading guard to prevent race condition
     async function loadData() {
+        if (loading) return;
+        loading = true;
         showLoading();
         try {
-            var now = Date.now();
+            const now = Date.now();
             if (cachedData && (now - cacheTime) < CONFIG.cacheTime) { render(); return; }
-            var courses = await fetchCourseList();
+            const courses = await fetchCourseList();
             if (!courses.length) {
                 document.getElementById("cxhw-body").innerHTML =
                     '<div class="cxhw-er">未找到任何课程，请确认已登录学习通</div>';
                 return;
             }
-            showLoading("正在加载 " + courses.length + " 个课程的作业数据...");
-            cachedData = await fetchAllHomework(courses);
+            const activeCourses = hideFinished ? courses.filter(isCourseActive) : courses;
+            const skipped = courses.length - activeCourses.length;
+            showLoading("正在加载 " + activeCourses.length + " 个课程的作业数据..." + (skipped > 0 ? "（已跳过 " + skipped + " 个已结课课程）" : ""));
+            cachedData = await fetchAllHomework(activeCourses);
             cacheTime = now;
             try {
                 GM_setValue("cxhw_cache", JSON.stringify(cachedData));
@@ -382,6 +444,8 @@
         } catch (e) {
             document.getElementById("cxhw-body").innerHTML =
                 '<div class="cxhw-er">加载失败: ' + esc(e.message) + '</div>';
+        } finally {
+            loading = false;
         }
     }
 
@@ -393,16 +457,21 @@
     }
 
     // ===== Init =====
+    // #9: auto-load if valid cache exists
     function init() {
         try {
-            var saved = GM_getValue("cxhw_cache", null);
-            var savedTime = GM_getValue("cxhw_cache_time", 0);
+            const saved = GM_getValue("cxhw_cache", null);
+            const savedTime = GM_getValue("cxhw_cache_time", 0);
             if (saved && savedTime) {
                 cachedData = JSON.parse(saved);
                 cacheTime = savedTime;
             }
         } catch (e) {}
         createUI();
+        // Auto-load if no cache or cache expired
+        if (!cachedData || (Date.now() - cacheTime) >= CONFIG.cacheTime) {
+            loadData();
+        }
     }
 
     if (document.readyState === "complete") init();
