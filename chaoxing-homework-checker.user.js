@@ -81,8 +81,8 @@
     // ===== Utility =====
     function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-    function isCacheValid() {
-        return cachedData && cacheTime > 0 && (Date.now() - cacheTime) < CONFIG.cacheTime;
+    function isCourseCacheValid() {
+        return courseCache && courseCacheTime > 0 && (Date.now() - courseCacheTime) < CONFIG.cacheTime;
     }
 
     function gmFetch(url) {
@@ -267,10 +267,61 @@
     }
 
 
-    // ===== UI =====
-    let panel, overlay, cachedData = null, cacheTime = 0, loading = false;
+    // ===== Two-layer Cache =====
+    // Layer 1: course list (always full)
+    let courseCache = null, courseCacheTime = 0;
+    // Layer 2: homework per course (keyed by courseId)
+    let homeworkCache = {};
 
-    // P3: persist filter state
+    function loadCacheFromStorage() {
+        try {
+            const c = GM_getValue("cxhw_courses", null);
+            const ct = +GM_getValue("cxhw_courses_time", 0) || 0;
+            if (c && ct) {
+                const parsed = JSON.parse(c);
+                if (Array.isArray(parsed)) { courseCache = parsed; courseCacheTime = ct; }
+            }
+        } catch (e) { console.warn("[ChaoxingHW] Failed to load course cache:", e); }
+        try {
+            const h = GM_getValue("cxhw_homework", null);
+            if (h) {
+                const parsed = JSON.parse(h);
+                if (parsed && typeof parsed === "object") homeworkCache = parsed;
+            }
+        } catch (e) { console.warn("[ChaoxingHW] Failed to load homework cache:", e); }
+    }
+
+    function saveCacheToStorage() {
+        try {
+            GM_setValue("cxhw_courses", JSON.stringify(courseCache));
+            GM_setValue("cxhw_courses_time", courseCacheTime);
+            // Prune homework entries for courses no longer in courseCache
+            if (courseCache) {
+                const validIds = new Set(courseCache.map(c => c.courseId));
+                for (const key of Object.keys(homeworkCache)) {
+                    if (!validIds.has(key)) delete homeworkCache[key];
+                }
+            }
+            GM_setValue("cxhw_homework", JSON.stringify(homeworkCache));
+        } catch (e) { console.warn("[ChaoxingHW] Failed to save cache:", e); }
+    }
+
+    function buildCachedData() {
+        if (!courseCache) return null;
+        return courseCache.map(c => {
+            const cached = homeworkCache[c.courseId];
+            return Object.assign({}, c, {
+                homework: cached ? cached.homework : [],
+                error: cached ? cached.error : null,
+                hwPending: !cached
+            });
+        });
+    }
+
+    // ===== UI =====
+    let panel, overlay, cachedData = null, loading = false;
+
+    // Persist filter state
     let cfilter = GM_getValue("cxhw_cfilter", "all");
     let hideFinished = GM_getValue("cxhw_hideFinished", false);
 
@@ -351,6 +402,14 @@
             hideFinished = !hideFinished;
             GM_setValue("cxhw_hideFinished", hideFinished);
             this.classList.toggle("on", hideFinished);
+            // When turning off hideFinished, check if closed courses need homework fetch
+            if (!hideFinished && courseCache) {
+                const missing = courseCache.filter(c => !isCourseActive(c) && !homeworkCache[c.courseId]);
+                if (missing.length > 0) {
+                    loadData();
+                    return;
+                }
+            }
             render();
         };
 
@@ -388,7 +447,7 @@
         const vis = panel.style.display === "block";
         panel.style.display = vis ? "none" : "block";
         overlay.style.display = vis ? "none" : "block";
-        if (!vis && !cachedData) loadData();
+        if (!vis && !courseCache) loadData();
     }
 
     function showLoading(msg) {
@@ -402,7 +461,9 @@
         let html = "";
         let count = 0;
         let errorCount = 0;
+        let pendingCount = 0;
         cachedData.forEach(c => {
+            if (c.hwPending) { pendingCount++; return; }
             if (c.error) { errorCount++; return; }
             if (hideFinished && !isCourseActive(c)) return;
             if (!c.homework || !c.homework.length) return;
@@ -446,6 +507,10 @@
             html = '<div class="cxhw-er" style="margin:8px 24px;padding:8px 12px;font-size:12px;">' +
                 errorCount + ' 个课程加载失败（可能是已结课或权限不足）</div>' + html;
         }
+        if (pendingCount > 0) {
+            html = '<div class="cxhw-er" style="margin:8px 24px;padding:8px 12px;font-size:12px;background:#fff3cd;color:#856404;">' +
+                pendingCount + ' 个课程的作业数据尚未加载，点击刷新按钮获取</div>' + html;
+        }
         document.getElementById("cxhw-body").innerHTML = html;
         document.getElementById("cxhw-cnt").textContent = count;
         updateCacheInfo();
@@ -453,34 +518,56 @@
 
     function updateCacheInfo() {
         const el = document.getElementById("cxhw-cc");
-        if (cacheTime > 0) {
-            const m = Math.floor((Date.now() - cacheTime) / 60000);
+        if (courseCacheTime > 0) {
+            const m = Math.floor((Date.now() - courseCacheTime) / 60000);
             el.textContent = m >= 0 ? ("缓存: " + m + " 分钟前") : "";
         }
     }
 
-    async function loadData() {
+    async function loadData(forceAll = false) {
         if (loading) return;
         loading = true;
         try {
-            if (isCacheValid()) { render(); return; }
-            showLoading();
-            const courses = await fetchCourseList();
-            if (!courses.length) {
+            // Layer 1: fetch course list if needed
+            if (!isCourseCacheValid() || forceAll) {
+                showLoading("正在获取课程列表...");
+                courseCache = await fetchCourseList();
+                courseCacheTime = Date.now();
+            }
+            if (!courseCache.length) {
                 document.getElementById("cxhw-body").innerHTML =
                     '<div class="cxhw-er">未找到任何课程，请确认已登录学习通</div>';
                 return;
             }
-            // P2: always fetch ALL courses for cache integrity, filter in render()
-            showLoading("正在加载 " + courses.length + " 个课程的作业数据...");
-            cachedData = await fetchAllHomework(courses, (done, total) => {
-                showLoading("已加载 " + done + "/" + total + " 个课程...");
-            });
-            cacheTime = Date.now();
-            try {
-                GM_setValue("cxhw_cache", JSON.stringify(cachedData));
-                GM_setValue("cxhw_cache_time", cacheTime);
-            } catch(e) { console.warn("[ChaoxingHW] Failed to save cache:", e); }
+
+            // Layer 2: determine which courses need homework fetch
+            let coursesToFetch;
+            if (forceAll) {
+                coursesToFetch = courseCache;
+            } else {
+                coursesToFetch = courseCache.filter(c => {
+                    if (hideFinished && !isCourseActive(c)) return false;
+                    const cached = homeworkCache[c.courseId];
+                    if (!cached) return true;
+                    // Homework TTL: same as course cache
+                    return cached.time && (Date.now() - cached.time) >= CONFIG.cacheTime;
+                });
+            }
+
+            if (coursesToFetch.length > 0) {
+                const skipped = courseCache.length - coursesToFetch.length;
+                showLoading("正在加载 " + coursesToFetch.length + " 个课程的作业数据..." +
+                    (skipped > 0 ? "（跳过 " + skipped + " 个已结课/已缓存课程）" : ""));
+                const results = await fetchAllHomework(coursesToFetch, (done, total) => {
+                    showLoading("已加载 " + done + "/" + total + " 个课程...");
+                });
+                for (const r of results) {
+                    homeworkCache[r.courseId] = { homework: r.homework, error: r.error, time: Date.now() };
+                }
+                saveCacheToStorage();
+            }
+
+            cachedData = buildCachedData();
             render();
         } catch (e) {
             document.getElementById("cxhw-body").innerHTML =
@@ -495,27 +582,30 @@
             showLoading("正在加载中，请稍候...");
             return;
         }
-        cachedData = null;
-        cacheTime = 0;
-        try { GM_setValue("cxhw_cache", null); GM_setValue("cxhw_cache_time", 0); } catch(e) {}
-        loadData();
+        courseCache = null;
+        courseCacheTime = 0;
+        homeworkCache = {};
+        try { GM_setValue("cxhw_courses", null); GM_setValue("cxhw_courses_time", 0); GM_setValue("cxhw_homework", null); } catch(e) {}
+        loadData(true);
     }
 
     // ===== Init =====
     function init() {
-        try {
-            const saved = GM_getValue("cxhw_cache", null);
-            const savedTime = GM_getValue("cxhw_cache_time", 0);
-            if (saved && savedTime) {
-                const parsed = JSON.parse(saved);
-                if (Array.isArray(parsed)) {
-                    cachedData = parsed;
-                    cacheTime = savedTime;
-                }
-            }
-        } catch (e) { console.warn("[ChaoxingHW] Failed to load cache:", e); }
+        loadCacheFromStorage();
         createUI();
-        if (!isCacheValid()) loadData();
+        try {
+            cachedData = buildCachedData();
+            render();
+        } catch (e) {
+            console.warn("[ChaoxingHW] Failed to build cached data:", e);
+            courseCache = null;
+            homeworkCache = {};
+        }
+        const needsFetch = !isCourseCacheValid() || (courseCache && courseCache.some(c => {
+            if (hideFinished && !isCourseActive(c)) return false;
+            return !homeworkCache[c.courseId];
+        }));
+        if (needsFetch) loadData();
     }
 
     if (document.readyState === "complete") init();
