@@ -541,25 +541,27 @@
             }
 
             // Layer 2: determine which courses need homework fetch
-            let coursesToFetch;
-            if (forceAll) {
-                coursesToFetch = courseCache;
-            } else {
-                coursesToFetch = courseCache.filter(c => {
-                    if (hideFinished && !isCourseActive(c)) return false;
-                    const cached = homeworkCache[c.courseId];
-                    if (!cached) return true;
-                    if (!cached.time) return true;
-                    return (Date.now() - cached.time) >= CONFIG.cacheTime;
-                });
-            }
+            let skippedFinished = 0, skippedCached = 0;
+            const coursesToFetch = courseCache.filter(c => {
+                if (hideFinished && !isCourseActive(c)) { skippedFinished++; return false; }
+                if (forceAll) return true;
+                const cached = homeworkCache[c.courseId];
+                if (!cached) return true;
+                if (!cached.time) return true;
+                if ((Date.now() - cached.time) < CONFIG.cacheTime) { skippedCached++; return false; }
+                return true;
+            });
+            const skipMsg = [
+                skippedFinished > 0 ? (skippedFinished + " 个已结课") : "",
+                skippedCached > 0 ? (skippedCached + " 个已缓存") : ""
+            ].filter(Boolean).join("、");
 
             if (coursesToFetch.length > 0) {
-                const skipped = courseCache.length - coursesToFetch.length;
-                showLoading("正在加载 " + coursesToFetch.length + " 个课程的作业数据..." +
-                    (skipped > 0 ? "（跳过 " + skipped + " 个已结课/已缓存课程）" : ""));
+                showLoading("正在加载 " + coursesToFetch.length + "/" + courseCache.length + " 个课程的作业数据..." +
+                    (skipMsg ? "（跳过 " + skipMsg + " 课程）" : ""));
                 const results = await fetchAllHomework(coursesToFetch, (done, total) => {
-                    showLoading("已加载 " + done + "/" + total + " 个课程...");
+                    showLoading("已加载 " + done + "/" + total + " 个课程..." +
+                        (skipMsg ? "（跳过 " + skipMsg + " 课程）" : ""));
                 });
                 for (const r of results) {
                     homeworkCache[r.courseId] = { homework: r.homework, error: r.error, time: Date.now() };
