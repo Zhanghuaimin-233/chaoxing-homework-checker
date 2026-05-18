@@ -118,10 +118,14 @@
         return new DOMParser().parseFromString(html, "text/html");
     }
 
-    function esc(s) {
+    function escText(s) {
         const d = document.createElement("div");
         d.textContent = s;
         return d.innerHTML;
+    }
+
+    function escAttr(s) {
+        return escText(s).replace(/"/g, "&quot;");
     }
 
     function isValidId(v) { return /^\d+$/.test(String(v)); }
@@ -139,9 +143,9 @@
     }
 
     // Normalize status text — platform uses traditional Chinese (待批閱/未交/已完成)
-    function isPending(s) { return s === "未交"; }
+    function isPending(s) { return /未交|未提交/.test(s); }
     function isSubmitted(s) { return /待批/.test(s); }
-    function isCompleted(s) { return s === "已完成"; }
+    function isCompleted(s) { return /已完成|已批改/.test(s); }
 
 
     // ===== Core Logic =====
@@ -180,18 +184,13 @@
         const html = await gmFetchWithRetry(url);
         const doc = parseHTML(html);
         const weEl = doc.getElementById("workEnc");
-        const encEl = doc.getElementById("enc");
         if (!weEl) {
             const urlMatch = html.match(/enc=([a-f0-9]{32})/);
-            if (urlMatch) return { workEnc: urlMatch[1], enc: urlMatch[1] };
-            // P1: informative error
+            if (urlMatch) return urlMatch[1];
             const snippet = html.substring(0, 200).replace(/\s+/g, " ");
             throw new Error("未找到workEnc（页面可能已变更或未登录），响应片段: " + snippet);
         }
-        return {
-            workEnc: weEl ? weEl.value : "",
-            enc: encEl ? encEl.value : ""
-        };
+        return weEl.value;
     }
 
     async function fetchHomeworkList(courseId, classId, cpi, workEnc, pageNum = 1) {
@@ -231,12 +230,12 @@
 
     async function fetchCourseHomework(course) {
         try {
-            const enc = await fetchWorkEnc(course.courseId, course.classId, course.cpi);
+            const workEnc = await fetchWorkEnc(course.courseId, course.classId, course.cpi);
             let all = [];
             let page = 1;
             let total = 1;
             do {
-                const res = await fetchHomeworkList(course.courseId, course.classId, course.cpi, enc.workEnc, page);
+                const res = await fetchHomeworkList(course.courseId, course.classId, course.cpi, workEnc, page);
                 all = all.concat(res.items);
                 total = res.totalPages;
                 page++;
@@ -419,7 +418,7 @@
             const courseUrl = safeUrl(buildCourseUrl(c));
             html += '<div class="cxhw-cs">';
             html += '<div class="cxhw-ch">';
-            html += '<span class="cxhw-cn"><a href="' + courseUrl + '" target="_blank" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none;">' + esc(c.name) + '</a></span>';
+            html += '<span class="cxhw-cn"><a href="' + courseUrl + '" target="_blank" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none;">' + escText(c.name) + '</a></span>';
             html += '<span class="cxhw-ci">';
             if (pend) html += '<span class="r">' + pend + ' 未交</span> ';
             if (wait) html += wait + ' 待批改 ';
@@ -431,10 +430,10 @@
                     : isSubmitted(h.status) ? "cxhw-ss-dp"
                     : isCompleted(h.status) ? "cxhw-ss-ok" : "cxhw-ss-ot";
                 const hwUrl = h.url ? safeUrl(h.url) : "";
-                html += '<div class="cxhw-hi"' + (hwUrl ? ' data-url="' + esc(hwUrl) + '"' : '') + '><div>';
-                html += '<div class="cxhw-ht">' + esc(h.title) + '</div>';
-                if (h.deadline) html += '<div class="cxhw-hd">&#9200; ' + esc(h.deadline) + '</div>';
-                html += '</div><span class="cxhw-ss ' + sc + '">' + esc(h.status) + '</span></div>';
+                html += '<div class="cxhw-hi"' + (hwUrl ? ' data-url="' + escAttr(hwUrl) + '"' : '') + '><div>';
+                html += '<div class="cxhw-ht">' + escText(h.title) + '</div>';
+                if (h.deadline) html += '<div class="cxhw-hd">&#9200; ' + escText(h.deadline) + '</div>';
+                html += '</div><span class="cxhw-ss ' + sc + '">' + escText(h.status) + '</span></div>';
             });
             html += '</div></div>';
         });
@@ -485,14 +484,17 @@
             render();
         } catch (e) {
             document.getElementById("cxhw-body").innerHTML =
-                '<div class="cxhw-er">加载失败: ' + esc(e.message) + '</div>';
+                '<div class="cxhw-er">加载失败: ' + escText(e.message) + '</div>';
         } finally {
             loading = false;
         }
     }
 
     function doRefresh() {
-        if (loading) return;
+        if (loading) {
+            showLoading("正在加载中，请稍候...");
+            return;
+        }
         cachedData = null;
         cacheTime = 0;
         try { GM_setValue("cxhw_cache", null); GM_setValue("cxhw_cache_time", 0); } catch(e) {}
@@ -505,8 +507,11 @@
             const saved = GM_getValue("cxhw_cache", null);
             const savedTime = GM_getValue("cxhw_cache_time", 0);
             if (saved && savedTime) {
-                cachedData = JSON.parse(saved);
-                cacheTime = savedTime;
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) {
+                    cachedData = parsed;
+                    cacheTime = savedTime;
+                }
             }
         } catch (e) { console.warn("[ChaoxingHW] Failed to load cache:", e); }
         createUI();
