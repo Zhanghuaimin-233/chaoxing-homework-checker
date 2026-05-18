@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         学习通作业统一查看
 // @namespace    https://github.com/chaoxing-homework-checker
-// @version      1.2.0
+// @version      2.0.0
 // @description  检测学习通当前账号所有课程的作业情况并统一显示
 // @author       Assistant
 // @match        *://*.chaoxing.com/*
