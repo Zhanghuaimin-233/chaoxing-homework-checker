@@ -138,6 +138,11 @@
         return "https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid=" + c.courseId + "&clazzid=" + c.classId + "&cpi=" + c.cpi + "&ismooc2=1&v=2";
     }
 
+    // Normalize status text — platform uses traditional Chinese (待批閱/未交/已完成)
+    function isPending(s) { return s === "未交"; }
+    function isSubmitted(s) { return /待批/.test(s); }
+    function isCompleted(s) { return s === "已完成"; }
+
 
     // ===== Core Logic =====
     async function fetchCourseList() {
@@ -403,14 +408,14 @@
             if (hideFinished && !isCourseActive(c)) return;
             if (!c.homework || !c.homework.length) return;
             let hw = c.homework;
-            if (cfilter === "pending") hw = hw.filter(h => h.status === "未交");
-            else if (cfilter === "submitted") hw = hw.filter(h => h.status === "待批阅" || h.status === "待批改");
-            else if (cfilter === "completed") hw = hw.filter(h => h.status === "已完成");
+            if (cfilter === "pending") hw = hw.filter(h => isPending(h.status));
+            else if (cfilter === "submitted") hw = hw.filter(h => isSubmitted(h.status));
+            else if (cfilter === "completed") hw = hw.filter(h => isCompleted(h.status));
             if (!hw.length) return;
             count += hw.length;
-            const pend = c.homework.filter(h => h.status === "未交").length;
-            const wait = c.homework.filter(h => h.status === "待批阅" || h.status === "待批改").length;
-            const done = c.homework.filter(h => h.status === "已完成").length;
+            const pend = c.homework.filter(h => isPending(h.status)).length;
+            const wait = c.homework.filter(h => isSubmitted(h.status)).length;
+            const done = c.homework.filter(h => isCompleted(h.status)).length;
             const courseUrl = safeUrl(buildCourseUrl(c));
             html += '<div class="cxhw-cs">';
             html += '<div class="cxhw-ch">';
@@ -422,9 +427,9 @@
             html += '<span class="cxhw-ar">&#9660;</span></span></div>';
             html += '<div class="cxhw-hl">';
             hw.forEach(h => {
-                const sc = h.status === "未交" ? "cxhw-ss-nj"
-                    : (h.status === "待批阅" || h.status === "待批改") ? "cxhw-ss-dp"
-                    : h.status === "已完成" ? "cxhw-ss-ok" : "cxhw-ss-ot";
+                const sc = isPending(h.status) ? "cxhw-ss-nj"
+                    : isSubmitted(h.status) ? "cxhw-ss-dp"
+                    : isCompleted(h.status) ? "cxhw-ss-ok" : "cxhw-ss-ot";
                 const hwUrl = h.url ? safeUrl(h.url) : "";
                 html += '<div class="cxhw-hi"' + (hwUrl ? ' data-url="' + esc(hwUrl) + '"' : '') + '><div>';
                 html += '<div class="cxhw-ht">' + esc(h.title) + '</div>';
