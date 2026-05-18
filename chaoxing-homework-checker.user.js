@@ -297,7 +297,7 @@
             GM_setValue("cxhw_courses_time", courseCacheTime);
             // Prune homework entries for courses no longer in courseCache
             if (courseCache) {
-                const validIds = new Set(courseCache.map(c => c.courseId));
+                const validIds = new Set(courseCache.map(c => String(c.courseId)));
                 for (const key of Object.keys(homeworkCache)) {
                     if (!validIds.has(key)) delete homeworkCache[key];
                 }
@@ -549,8 +549,8 @@
                     if (hideFinished && !isCourseActive(c)) return false;
                     const cached = homeworkCache[c.courseId];
                     if (!cached) return true;
-                    // Homework TTL: same as course cache
-                    return cached.time && (Date.now() - cached.time) >= CONFIG.cacheTime;
+                    if (!cached.time) return true;
+                    return (Date.now() - cached.time) >= CONFIG.cacheTime;
                 });
             }
 
