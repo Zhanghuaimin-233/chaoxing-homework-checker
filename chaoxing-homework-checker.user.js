@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         学习通作业统一查看
 // @namespace    https://github.com/chaoxing-homework-checker
-// @version      2.0.0
+// @version      3.0.0
 // @description  检测学习通当前账号所有课程的作业情况并统一显示
 // @author       Assistant
 // @match        *://*.chaoxing.com/*
@@ -21,7 +21,19 @@
     // Skip iframes — only inject UI in top-level window
     if (window !== window.top) return;
 
-    const CONFIG = { concurrency: 3, requestDelay: 500, cacheTime: 30 * 60 * 1000, requestTimeout: 15000, maxRetries: 2 };
+    const CONFIG = { concurrency: 2, requestDelay: 500, cacheTime: 30 * 60 * 1000, requestTimeout: 15000, maxRetries: 3, requestJitter: 1500, batchSize: 8, batchCooldown: 8000, batchCooldownJitter: 7000, backoffBase: 2000, backoffMax: 60000, safeModeConcurrency: 1 };
+
+    // Anti-detection rate control
+    const rate = { delayMultiplier: 1, recentFailures: 0, recentSuccesses: 0, paused: false, safeMode: GM_getValue("cxhw_safeMode", false) };
+    function jitteredDelay(base, jitter) { return base + Math.floor(Math.random() * jitter); }
+    function backoffDelay(attempt) { return Math.min(CONFIG.backoffMax, CONFIG.backoffBase * Math.pow(2, attempt)) + Math.floor(Math.random() * 1500); }
+    function adaptiveDelay() { return jitteredDelay(CONFIG.requestDelay * rate.delayMultiplier, CONFIG.requestJitter); }
+    function getConcurrency() { return rate.safeMode ? CONFIG.safeModeConcurrency : CONFIG.concurrency; }
+    function onSuccess() { rate.recentSuccesses++; rate.recentFailures = Math.max(0, rate.recentFailures - 1); if (rate.recentSuccesses >= 5 && rate.delayMultiplier > 1) { rate.delayMultiplier = Math.max(1, rate.delayMultiplier * 0.8); rate.recentSuccesses = 0; } }
+    function onFailure() { rate.recentFailures++; rate.recentSuccesses = 0; if (rate.recentFailures >= 3) { rate.delayMultiplier = Math.min(4, rate.delayMultiplier * 1.5); rate.recentFailures = 0; } }
+
+    const RISK_PATTERNS = [/captcha/i, /verify/i, /验证码/, /安全验证/, /风险/, /异常访问/, /passport2\.chaoxing\.com/, /numcode/, /validateCode/];
+    function isRiskControl(text, url) { return RISK_PATTERNS.some(p => p.test(text) || p.test(url)); }
 
     // ===== Styles =====
     GM_addStyle(`
@@ -38,6 +50,10 @@
         #cxhw-hidefin{border-style:dashed;font-size:12px;padding:4px 10px}
         #cxhw-hidefin.on{background:#6c757d;border-color:#6c757d}
         #cxhw-expand{border-style:dashed;font-size:12px;padding:4px 10px}
+        #cxhw-safemode{border-style:dashed;font-size:12px;padding:4px 10px}
+        #cxhw-safemode.on{background:#dc3545;border-color:#dc3545}
+        #cxhw-pause{border-style:dashed;font-size:12px;padding:4px 10px}
+        #cxhw-pause.on{background:#ffc107;border-color:#ffc107;color:#000}
         .cxhw-sts{margin-left:auto;font-size:13px;color:#6c757d}
         .cxhw-sts b{color:#667eea}
         .cxhw-cnt{overflow-y:auto;max-height:calc(85vh - 200px)}
@@ -91,9 +107,16 @@
                 method: "GET",
                 url,
                 timeout: CONFIG.requestTimeout,
-                headers: { "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
+                headers: {
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": (navigator.language || "zh-CN") + ",zh-CN;q=0.9,zh;q=0.8,en;q=0.7",
+                    "X-Requested-With": "XMLHttpRequest",
+                },
                 onload: r => {
-                    if (r.status >= 200 && r.status < 300) resolve(r.responseText);
+                    const text = r.responseText || "";
+                    const finalUrl = r.finalUrl || url;
+                    if (isRiskControl(text, finalUrl)) { reject(new Error("__RISK__")); return; }
+                    if (r.status >= 200 && r.status < 300) resolve(text);
                     else reject(new Error("HTTP " + r.status + " for " + url.substring(0, 80)));
                 },
                 onerror: () => reject(new Error("Network error for " + url.substring(0, 80))),
@@ -103,11 +126,22 @@
     }
 
     async function gmFetchWithRetry(url, retries = 0) {
+        if (rate.paused) throw new Error("__PAUSED__");
         try {
-            return await gmFetch(url);
+            const result = await gmFetch(url);
+            onSuccess();
+            return result;
         } catch (e) {
+            if (e.message === "__RISK__") {
+                rate.paused = true;
+                updatePauseBtn();
+                showRiskWarning();
+                throw new Error("检测到风控/验证码，请完成验证后继续");
+            }
+            if (e.message === "__PAUSED__") throw e;
+            onFailure();
             if (retries < CONFIG.maxRetries && /Timeout|Network error|HTTP 5\d{2}/.test(e.message)) {
-                await delay(1000 * (retries + 1));
+                await delay(backoffDelay(retries));
                 return gmFetchWithRetry(url, retries + 1);
             }
             throw e;
@@ -239,7 +273,7 @@
                 all = all.concat(res.items);
                 total = res.totalPages;
                 page++;
-                if (page <= total) await delay(CONFIG.requestDelay);
+                if (page <= total) await delay(adaptiveDelay());
             } while (page <= total);
             return Object.assign({}, course, { homework: all, error: null });
         } catch (e) {
@@ -247,22 +281,36 @@
         }
     }
 
-    // P2: progress callback
+    // Batch processing with cooldowns + pause support
     async function fetchAllHomework(courses, onProgress) {
         const results = new Array(courses.length);
         let done = 0;
         let idx = 0;
+        const concurrency = getConcurrency();
+
         async function worker() {
             while (idx < courses.length) {
+                if (rate.paused) return;
                 const i = idx++;
                 results[i] = await fetchCourseHomework(courses[i]);
                 done++;
                 if (onProgress) onProgress(done, courses.length);
+                if (idx < courses.length && !rate.paused) await delay(adaptiveDelay());
             }
         }
-        const workers = [];
-        for (let i = 0; i < CONFIG.concurrency; i++) workers.push(worker());
-        await Promise.all(workers);
+
+        for (let batchStart = 0; batchStart < courses.length; batchStart += CONFIG.batchSize) {
+            if (rate.paused) break;
+            const batchEnd = Math.min(batchStart + CONFIG.batchSize, courses.length);
+            idx = batchStart;
+            const workers = [];
+            for (let i = 0; i < Math.min(concurrency, batchEnd - batchStart); i++) workers.push(worker());
+            await Promise.all(workers);
+            if (batchEnd < courses.length && !rate.paused) {
+                if (onProgress) onProgress(done, courses.length);
+                await delay(jitteredDelay(CONFIG.batchCooldown, CONFIG.batchCooldownJitter));
+            }
+        }
         return results;
     }
 
@@ -318,6 +366,29 @@
         });
     }
 
+    function showRiskWarning() {
+        const body = document.getElementById("cxhw-body");
+        if (!body) return;
+        body.innerHTML =
+            '<div class="cxhw-er" style="background:#fff3cd;color:#856404;text-align:center;padding:24px;">' +
+            '<div style="font-size:16px;font-weight:600;margin-bottom:12px;">&#9888; 检测到风控/验证码</div>' +
+            '<div style="margin-bottom:16px;">请在浏览器中完成验证后，点击下方按钮继续</div>' +
+            '<button id="cxhw-resume-btn" style="padding:8px 24px;background:#667eea;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;">继续加载</button></div>';
+        document.getElementById("cxhw-resume-btn").onclick = () => {
+            rate.paused = false;
+            rate.delayMultiplier = 4;
+            updatePauseBtn();
+            loadData();
+        };
+    }
+
+    function updatePauseBtn() {
+        const btn = document.getElementById("cxhw-pause");
+        if (!btn) return;
+        btn.classList.toggle("on", rate.paused);
+        btn.textContent = rate.paused ? "▶ 继续" : "⏸ 暂停";
+    }
+
     // ===== UI =====
     let panel, overlay, cachedData = null, loading = false;
 
@@ -364,6 +435,8 @@
                 '<button class="cxhw-fb" data-f="completed">已完成</button>' +
                 '<button class="cxhw-fb" id="cxhw-hidefin">&#9670; 隐藏已结课</button>' +
                 '<button class="cxhw-fb" id="cxhw-expand">展开/折叠</button>' +
+                '<button class="cxhw-fb" id="cxhw-pause">⏸ 暂停</button>' +
+                '<button class="cxhw-fb" id="cxhw-safemode">&#9888; 安全模式</button>' +
                 '<span class="cxhw-sts">共 <b id="cxhw-cnt">0</b> 项作业</span>' +
             '</div>' +
             '<div class="cxhw-cnt" id="cxhw-body">' +
@@ -387,6 +460,7 @@
         if (hideFinished) {
             document.getElementById("cxhw-hidefin").classList.add("on");
         }
+        if (rate.safeMode) document.getElementById("cxhw-safemode").classList.add("on");
 
         panel.querySelectorAll(".cxhw-fb[data-f]").forEach(b => {
             b.onclick = () => {
@@ -420,6 +494,19 @@
             document.querySelectorAll(".cxhw-ch").forEach(ch => {
                 ch.classList.toggle("open", allExpanded);
             });
+        };
+
+        // Pause button
+        document.getElementById("cxhw-pause").onclick = function() {
+            rate.paused = !rate.paused;
+            updatePauseBtn();
+            if (!rate.paused && loading) loadData();
+        };
+        // Safe mode toggle
+        document.getElementById("cxhw-safemode").onclick = function() {
+            rate.safeMode = !rate.safeMode;
+            GM_setValue("cxhw_safeMode", rate.safeMode);
+            this.classList.toggle("on", rate.safeMode);
         };
 
         // Event delegation for course headers and homework items
@@ -525,7 +612,7 @@
     }
 
     async function loadData(forceAll = false) {
-        if (loading) return;
+        if (loading || rate.paused) return;
         loading = true;
         try {
             // Layer 1: fetch course list if needed
@@ -557,11 +644,12 @@
             ].filter(Boolean).join("、");
 
             if (coursesToFetch.length > 0) {
+                const modeStr = rate.safeMode ? " [安全模式]" : "";
                 showLoading("正在加载 " + coursesToFetch.length + "/" + courseCache.length + " 个课程的作业数据..." +
-                    (skipMsg ? "（跳过 " + skipMsg + " 课程）" : ""));
+                    (skipMsg ? "（跳过 " + skipMsg + " 课程）" : "") + modeStr);
                 const results = await fetchAllHomework(coursesToFetch, (done, total) => {
                     showLoading("已加载 " + done + "/" + total + " 个课程..." +
-                        (skipMsg ? "（跳过 " + skipMsg + " 课程）" : ""));
+                        (skipMsg ? "（跳过 " + skipMsg + " 课程）" : "") + modeStr);
                 });
                 for (const r of results) {
                     homeworkCache[r.courseId] = { homework: r.homework, error: r.error, time: Date.now() };
