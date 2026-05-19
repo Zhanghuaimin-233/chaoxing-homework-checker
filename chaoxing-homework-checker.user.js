@@ -272,6 +272,8 @@
     let courseCache = null, courseCacheTime = 0;
     // Layer 2: homework per course (keyed by courseId)
     let homeworkCache = {};
+    // Course selection: null = all, string[] = selected courseIds
+    let selectedCourseIds = null;
 
     function loadCacheFromStorage() {
         try {
@@ -289,6 +291,13 @@
                 if (parsed && typeof parsed === "object") homeworkCache = parsed;
             }
         } catch (e) { console.warn("[ChaoxingHW] Failed to load homework cache:", e); }
+        try {
+            const s = GM_getValue("cxhw_selected_courses", null);
+            if (s) {
+                const parsed = JSON.parse(s);
+                if (Array.isArray(parsed)) selectedCourseIds = parsed;
+            }
+        } catch (e) {}
     }
 
     function saveCacheToStorage() {
@@ -303,6 +312,7 @@
                 }
             }
             GM_setValue("cxhw_homework", JSON.stringify(homeworkCache));
+            GM_setValue("cxhw_selected_courses", selectedCourseIds ? JSON.stringify(selectedCourseIds) : null);
         } catch (e) { console.warn("[ChaoxingHW] Failed to save cache:", e); }
     }
 
@@ -315,6 +325,82 @@
                 error: cached ? cached.error : null,
                 hwPending: !cached
             });
+        });
+    }
+
+    function buildFilteredCachedData() {
+        const all = buildCachedData();
+        if (!all || !selectedCourseIds) return all;
+        const idSet = new Set(selectedCourseIds);
+        return all.filter(c => idSet.has(String(c.courseId)));
+    }
+
+    // ===== Course Selection =====
+    function applyCourseSelection(courses) {
+        if (!selectedCourseIds) return courses;
+        const idSet = new Set(selectedCourseIds);
+        return courses.filter(c => idSet.has(String(c.courseId)));
+    }
+
+    function showCourseSelector(courses) {
+        return new Promise(resolve => {
+            const body = document.getElementById("cxhw-body");
+            const savedSet = selectedCourseIds ? new Set(selectedCourseIds) : null;
+            let checked = new Set(savedSet ? courses.filter(c => savedSet.has(String(c.courseId))).map(c => String(c.courseId)) : courses.map(c => String(c.courseId)));
+
+            function renderSelector() {
+                const search = document.getElementById("cxhw-sel-search");
+                const q = search ? search.value.trim().toLowerCase() : "";
+                let html = '<div style="padding:12px 24px;background:#f8f9fa;border-bottom:1px solid #e9ecef;display:flex;gap:10px;align-items:center;flex-wrap:wrap">';
+                html += '<button class="cxhw-fb" id="cxhw-sel-all">全选</button>';
+                html += '<button class="cxhw-fb" id="cxhw-sel-none">全不选</button>';
+                html += '<button class="cxhw-fb" id="cxhw-sel-active">仅已开课</button>';
+                html += '<input id="cxhw-sel-search" type="text" placeholder="搜索课程名/教师" value="' + escAttr(q) + '" style="margin-left:auto;padding:4px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;width:180px">';
+                html += '</div>';
+                html += '<div style="overflow-y:auto;max-height:calc(85vh - 280px);padding:8px 0">';
+                let visibleCount = 0;
+                courses.forEach(c => {
+                    const id = String(c.courseId);
+                    const name = (c.name || "").toLowerCase();
+                    const teacher = (c.teacher || "").toLowerCase();
+                    if (q && !name.includes(q) && !teacher.includes(q)) return;
+                    visibleCount++;
+                    const isActive = isCourseActive(c);
+                    const statusStr = !isActive ? '<span style="color:#6c757d;font-size:11px;margin-left:8px">已结课</span>' : '';
+                    const newBadge = savedSet && !savedSet.has(id) ? '<span style="background:#667eea;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:8px">新</span>' : '';
+                    html += '<label style="display:flex;align-items:center;padding:8px 24px;cursor:pointer;gap:10px" class="cxhw-sel-row">';
+                    html += '<input type="checkbox" data-cid="' + id + '"' + (checked.has(id) ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer">';
+                    html += '<span style="font-size:13px;font-weight:500;flex:1">' + escText(c.name) + '</span>';
+                    html += '<span style="font-size:12px;color:#6c757d;min-width:80px">' + escText(c.teacher || '') + '</span>';
+                    html += statusStr + newBadge;
+                    html += '</label>';
+                });
+                if (!visibleCount) html += '<div style="padding:24px;text-align:center;color:#6c757d">无匹配课程</div>';
+                html += '</div>';
+                html += '<div style="padding:12px 24px;background:#f8f9fa;border-top:1px solid #e9ecef;display:flex;justify-content:space-between;align-items:center">';
+                html += '<span style="font-size:13px;color:#6c757d">已选 <b style="color:#667eea">' + checked.size + '</b>/' + courses.length + ' 个课程</span>';
+                html += '<div style="display:flex;gap:10px">';
+                html += '<button class="cxhw-fb" id="cxhw-sel-cancel">取消</button>';
+                html += '<button class="cxhw-fb on" id="cxhw-sel-confirm">确认</button>';
+                html += '</div></div>';
+                body.innerHTML = html;
+
+                // Event bindings
+                document.getElementById("cxhw-sel-all").onclick = () => { checked = new Set(courses.map(c => String(c.courseId))); renderSelector(); };
+                document.getElementById("cxhw-sel-none").onclick = () => { checked = new Set(); renderSelector(); };
+                document.getElementById("cxhw-sel-active").onclick = () => { checked = new Set(courses.filter(c => isCourseActive(c)).map(c => String(c.courseId))); renderSelector(); };
+                document.getElementById("cxhw-sel-search").oninput = () => renderSelector();
+                document.getElementById("cxhw-sel-cancel").onclick = () => resolve(false);
+                document.getElementById("cxhw-sel-confirm").onclick = () => {
+                    if (checked.size === 0) { alert("请至少选择一个课程"); return; }
+                    selectedCourseIds = checked.size === courses.length ? null : Array.from(checked);
+                    resolve(true);
+                };
+                body.querySelectorAll("input[data-cid]").forEach(cb => {
+                    cb.onchange = () => { cb.checked ? checked.add(cb.dataset.cid) : checked.delete(cb.dataset.cid); };
+                });
+            }
+            renderSelector();
         });
     }
 
@@ -364,6 +450,7 @@
                 '<button class="cxhw-fb" data-f="completed">已完成</button>' +
                 '<button class="cxhw-fb" id="cxhw-hidefin">&#9670; 隐藏已结课</button>' +
                 '<button class="cxhw-fb" id="cxhw-expand">展开/折叠</button>' +
+                '<button class="cxhw-fb" id="cxhw-coursesel">&#9776; 课程选择</button>' +
                 '<span class="cxhw-sts">共 <b id="cxhw-cnt">0</b> 项作业</span>' +
             '</div>' +
             '<div class="cxhw-cnt" id="cxhw-body">' +
@@ -420,6 +507,17 @@
             document.querySelectorAll(".cxhw-ch").forEach(ch => {
                 ch.classList.toggle("open", allExpanded);
             });
+        };
+
+        // Course selection button
+        document.getElementById("cxhw-coursesel").onclick = async () => {
+            if (!courseCache) return;
+            const confirmed = await showCourseSelector(courseCache);
+            if (confirmed) {
+                saveCacheToStorage();
+                cachedData = buildFilteredCachedData();
+                render();
+            }
         };
 
         // Event delegation for course headers and homework items
@@ -540,9 +638,21 @@
                 return;
             }
 
+            // Course selection: show selector on first load (no saved selection) or forced refresh
+            if (!selectedCourseIds && !GM_getValue("cxhw_selected_courses", null)) {
+                const confirmed = await showCourseSelector(courseCache);
+                if (!confirmed) {
+                    selectedCourseIds = null; // user cancelled = select all
+                }
+                saveCacheToStorage();
+            }
+
+            // Apply course selection
+            const selectedCourses = applyCourseSelection(courseCache);
+
             // Layer 2: determine which courses need homework fetch
             let skippedFinished = 0, skippedCached = 0;
-            const coursesToFetch = courseCache.filter(c => {
+            const coursesToFetch = selectedCourses.filter(c => {
                 if (hideFinished && !isCourseActive(c)) { skippedFinished++; return false; }
                 if (forceAll) return true;
                 const cached = homeworkCache[c.courseId];
@@ -557,11 +667,12 @@
             ].filter(Boolean).join("、");
 
             if (coursesToFetch.length > 0) {
-                showLoading("正在加载 " + coursesToFetch.length + "/" + courseCache.length + " 个课程的作业数据..." +
-                    (skipMsg ? "（跳过 " + skipMsg + " 课程）" : ""));
+                const selStr = selectedCourseIds ? "（已选 " + selectedCourses.length + "/" + courseCache.length + " 个课程）" : "";
+                showLoading("正在加载 " + coursesToFetch.length + " 个课程的作业数据..." + selStr +
+                    (skipMsg ? "（跳过 " + skipMsg + "）" : ""));
                 const results = await fetchAllHomework(coursesToFetch, (done, total) => {
-                    showLoading("已加载 " + done + "/" + total + " 个课程..." +
-                        (skipMsg ? "（跳过 " + skipMsg + " 课程）" : ""));
+                    showLoading("已加载 " + done + "/" + total + " 个课程..." + selStr +
+                        (skipMsg ? "（跳过 " + skipMsg + "）" : ""));
                 });
                 for (const r of results) {
                     homeworkCache[r.courseId] = { homework: r.homework, error: r.error, time: Date.now() };
@@ -569,7 +680,7 @@
                 saveCacheToStorage();
             }
 
-            cachedData = buildCachedData();
+            cachedData = buildFilteredCachedData();
             render();
         } catch (e) {
             document.getElementById("cxhw-body").innerHTML =
@@ -596,14 +707,15 @@
         loadCacheFromStorage();
         createUI();
         try {
-            cachedData = buildCachedData();
+            cachedData = buildFilteredCachedData();
             render();
         } catch (e) {
             console.warn("[ChaoxingHW] Failed to build cached data:", e);
             courseCache = null;
             homeworkCache = {};
         }
-        const needsFetch = !isCourseCacheValid() || (courseCache && courseCache.some(c => {
+        const checkCourses = applyCourseSelection(courseCache || []);
+        const needsFetch = !isCourseCacheValid() || (checkCourses && checkCourses.some(c => {
             if (hideFinished && !isCourseActive(c)) return false;
             return !homeworkCache[c.courseId];
         }));
