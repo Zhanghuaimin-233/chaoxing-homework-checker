@@ -295,7 +295,7 @@
             const s = GM_getValue("cxhw_selected_courses", null);
             if (s) {
                 const parsed = JSON.parse(s);
-                if (Array.isArray(parsed)) selectedCourseIds = parsed;
+                if (Array.isArray(parsed) && parsed.length > 0) selectedCourseIds = parsed;
             }
         } catch (e) {}
     }
@@ -390,7 +390,10 @@
                 document.getElementById("cxhw-sel-none").onclick = () => { checked = new Set(); renderSelector(); };
                 document.getElementById("cxhw-sel-active").onclick = () => { checked = new Set(courses.filter(c => isCourseActive(c)).map(c => String(c.courseId))); renderSelector(); };
                 document.getElementById("cxhw-sel-search").oninput = () => renderSelector();
-                document.getElementById("cxhw-sel-cancel").onclick = () => resolve(false);
+                document.getElementById("cxhw-sel-cancel").onclick = () => {
+                    selectedCourseIds = null; // cancel = all selected
+                    resolve(false);
+                };
                 document.getElementById("cxhw-sel-confirm").onclick = () => {
                     if (checked.size === 0) { alert("请至少选择一个课程"); return; }
                     selectedCourseIds = checked.size === courses.length ? null : Array.from(checked);
