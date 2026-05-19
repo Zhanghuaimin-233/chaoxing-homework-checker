@@ -24,7 +24,7 @@
     const CONFIG = { concurrency: 2, requestDelay: 500, cacheTime: 30 * 60 * 1000, requestTimeout: 15000, maxRetries: 3, requestJitter: 1500, batchSize: 8, batchCooldown: 8000, batchCooldownJitter: 7000, backoffBase: 2000, backoffMax: 60000, safeModeConcurrency: 1 };
 
     // Anti-detection rate control
-    const rate = { delayMultiplier: 1, recentFailures: 0, recentSuccesses: 0, paused: false, safeMode: GM_getValue("cxhw_safeMode", false) };
+    const rate = { delayMultiplier: 1, recentFailures: 0, recentSuccesses: 0, safeMode: GM_getValue("cxhw_safeMode", false) };
     function jitteredDelay(base, jitter) { return base + Math.floor(Math.random() * jitter); }
     function backoffDelay(attempt) { return Math.min(CONFIG.backoffMax, CONFIG.backoffBase * Math.pow(2, attempt)) + Math.floor(Math.random() * 1500); }
     function adaptiveDelay() { return jitteredDelay(CONFIG.requestDelay * rate.delayMultiplier, CONFIG.requestJitter); }
@@ -52,8 +52,6 @@
         #cxhw-expand{border-style:dashed;font-size:12px;padding:4px 10px}
         #cxhw-safemode{border-style:dashed;font-size:12px;padding:4px 10px}
         #cxhw-safemode.on{background:#dc3545;border-color:#dc3545}
-        #cxhw-pause{border-style:dashed;font-size:12px;padding:4px 10px}
-        #cxhw-pause.on{background:#ffc107;border-color:#ffc107;color:#000}
         .cxhw-sts{margin-left:auto;font-size:13px;color:#6c757d}
         .cxhw-sts b{color:#667eea}
         .cxhw-cnt{overflow-y:auto;max-height:calc(85vh - 200px)}
@@ -115,7 +113,7 @@
                 onload: r => {
                     const text = r.responseText || "";
                     const finalUrl = r.finalUrl || url;
-                    if (isRiskControl(text, finalUrl)) { reject(new Error("__RISK__")); return; }
+                    if (isRiskControl(text, finalUrl)) { console.warn("[ChaoxingHW] Risk control detected for:", url); }
                     if (r.status >= 200 && r.status < 300) resolve(text);
                     else reject(new Error("HTTP " + r.status + " for " + url.substring(0, 80)));
                 },
@@ -126,19 +124,11 @@
     }
 
     async function gmFetchWithRetry(url, retries = 0) {
-        if (rate.paused) throw new Error("__PAUSED__");
         try {
             const result = await gmFetch(url);
             onSuccess();
             return result;
         } catch (e) {
-            if (e.message === "__RISK__") {
-                rate.paused = true;
-                updatePauseBtn();
-                showRiskWarning();
-                throw new Error("检测到风控/验证码，请完成验证后继续");
-            }
-            if (e.message === "__PAUSED__") throw e;
             onFailure();
             if (retries < CONFIG.maxRetries && /Timeout|Network error|HTTP 5\d{2}/.test(e.message)) {
                 await delay(backoffDelay(retries));
@@ -290,23 +280,21 @@
 
         async function worker() {
             while (idx < courses.length) {
-                if (rate.paused) return;
                 const i = idx++;
                 results[i] = await fetchCourseHomework(courses[i]);
                 done++;
                 if (onProgress) onProgress(done, courses.length);
-                if (idx < courses.length && !rate.paused) await delay(adaptiveDelay());
+                if (idx < courses.length) await delay(adaptiveDelay());
             }
         }
 
         for (let batchStart = 0; batchStart < courses.length; batchStart += CONFIG.batchSize) {
-            if (rate.paused) break;
             const batchEnd = Math.min(batchStart + CONFIG.batchSize, courses.length);
             idx = batchStart;
             const workers = [];
             for (let i = 0; i < Math.min(concurrency, batchEnd - batchStart); i++) workers.push(worker());
             await Promise.all(workers);
-            if (batchEnd < courses.length && !rate.paused) {
+            if (batchEnd < courses.length) {
                 if (onProgress) onProgress(done, courses.length);
                 await delay(jitteredDelay(CONFIG.batchCooldown, CONFIG.batchCooldownJitter));
             }
@@ -366,29 +354,6 @@
         });
     }
 
-    function showRiskWarning() {
-        const body = document.getElementById("cxhw-body");
-        if (!body) return;
-        body.innerHTML =
-            '<div class="cxhw-er" style="background:#fff3cd;color:#856404;text-align:center;padding:24px;">' +
-            '<div style="font-size:16px;font-weight:600;margin-bottom:12px;">&#9888; 检测到风控/验证码</div>' +
-            '<div style="margin-bottom:16px;">请在浏览器中完成验证后，点击下方按钮继续</div>' +
-            '<button id="cxhw-resume-btn" style="padding:8px 24px;background:#667eea;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;">继续加载</button></div>';
-        document.getElementById("cxhw-resume-btn").onclick = () => {
-            rate.paused = false;
-            rate.delayMultiplier = 4;
-            updatePauseBtn();
-            loadData(true);
-        };
-    }
-
-    function updatePauseBtn() {
-        const btn = document.getElementById("cxhw-pause");
-        if (!btn) return;
-        btn.classList.toggle("on", rate.paused);
-        btn.textContent = rate.paused ? "▶ 继续" : "⏸ 暂停";
-    }
-
     // ===== UI =====
     let panel, overlay, cachedData = null, loading = false;
 
@@ -435,7 +400,6 @@
                 '<button class="cxhw-fb" data-f="completed">已完成</button>' +
                 '<button class="cxhw-fb" id="cxhw-hidefin">&#9670; 隐藏已结课</button>' +
                 '<button class="cxhw-fb" id="cxhw-expand">展开/折叠</button>' +
-                '<button class="cxhw-fb" id="cxhw-pause">⏸ 暂停</button>' +
                 '<button class="cxhw-fb" id="cxhw-safemode">&#9888; 安全模式</button>' +
                 '<span class="cxhw-sts">共 <b id="cxhw-cnt">0</b> 项作业</span>' +
             '</div>' +
@@ -496,12 +460,6 @@
             });
         };
 
-        // Pause button
-        document.getElementById("cxhw-pause").onclick = function() {
-            rate.paused = !rate.paused;
-            updatePauseBtn();
-            if (!rate.paused && loading) loadData();
-        };
         // Safe mode toggle
         document.getElementById("cxhw-safemode").onclick = function() {
             rate.safeMode = !rate.safeMode;
@@ -612,7 +570,7 @@
     }
 
     async function loadData(forceAll = false) {
-        if (loading || rate.paused) return;
+        if (loading) return;
         loading = true;
         try {
             // Layer 1: fetch course list if needed
