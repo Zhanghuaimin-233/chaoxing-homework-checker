@@ -32,7 +32,7 @@
     function onSuccess() { rate.recentSuccesses++; rate.recentFailures = Math.max(0, rate.recentFailures - 1); if (rate.recentSuccesses >= 5 && rate.delayMultiplier > 1) { rate.delayMultiplier = Math.max(1, rate.delayMultiplier * 0.8); rate.recentSuccesses = 0; } }
     function onFailure() { rate.recentFailures++; rate.recentSuccesses = 0; if (rate.recentFailures >= 3) { rate.delayMultiplier = Math.min(4, rate.delayMultiplier * 1.5); rate.recentFailures = 0; } }
 
-    const RISK_PATTERNS = [/captcha/i, /verify/i, /验证码/, /安全验证/, /风险/, /异常访问/, /passport2\.chaoxing\.com/, /numcode/, /validateCode/];
+    const RISK_PATTERNS = [/captcha/i, /verify/i, /验证码/, /安全验证|身份验证/, /风险|异常访问/, /passport2\.chaoxing\.com/, /numcode/, /validateCode/];
     function isRiskControl(text, url) { return RISK_PATTERNS.some(p => p.test(text) || p.test(url)); }
 
     // ===== Styles =====
@@ -378,7 +378,7 @@
             rate.paused = false;
             rate.delayMultiplier = 4;
             updatePauseBtn();
-            loadData();
+            loadData(true);
         };
     }
 
@@ -652,6 +652,7 @@
                         (skipMsg ? "（跳过 " + skipMsg + " 课程）" : "") + modeStr);
                 });
                 for (const r of results) {
+                    if (!r) continue;
                     homeworkCache[r.courseId] = { homework: r.homework, error: r.error, time: Date.now() };
                 }
                 saveCacheToStorage();
