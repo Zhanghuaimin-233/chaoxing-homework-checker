@@ -276,21 +276,23 @@
         const results = new Array(courses.length);
         let done = 0;
         let idx = 0;
+        let batchLimit = 0;
         const concurrency = getConcurrency();
 
         async function worker() {
-            while (idx < courses.length) {
+            while (idx < batchLimit) {
                 const i = idx++;
                 results[i] = await fetchCourseHomework(courses[i]);
                 done++;
                 if (onProgress) onProgress(done, courses.length);
-                if (idx < courses.length) await delay(adaptiveDelay());
+                if (idx < batchLimit) await delay(adaptiveDelay());
             }
         }
 
         for (let batchStart = 0; batchStart < courses.length; batchStart += CONFIG.batchSize) {
             const batchEnd = Math.min(batchStart + CONFIG.batchSize, courses.length);
             idx = batchStart;
+            batchLimit = batchEnd;
             const workers = [];
             for (let i = 0; i < Math.min(concurrency, batchEnd - batchStart); i++) workers.push(worker());
             await Promise.all(workers);
