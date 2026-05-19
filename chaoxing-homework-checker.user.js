@@ -113,7 +113,7 @@
                 onload: r => {
                     const text = r.responseText || "";
                     const finalUrl = r.finalUrl || url;
-                    if (isRiskControl(text, finalUrl)) { console.warn("[ChaoxingHW] Risk control detected for:", url); }
+                    if (isRiskControl(text, finalUrl)) { reject(new Error("触发风控/验证码，请稍后再试或开启安全模式")); return; }
                     if (r.status >= 200 && r.status < 300) resolve(text);
                     else reject(new Error("HTTP " + r.status + " for " + url.substring(0, 80)));
                 },
