@@ -344,20 +344,34 @@
 
     function showCourseSelector(courses) {
         return new Promise(resolve => {
-            const body = document.getElementById("cxhw-body");
+            const panel = document.getElementById("cxhw-panel");
+            const overlay = document.getElementById("cxhw-overlay");
             const savedSet = selectedCourseIds ? new Set(selectedCourseIds) : null;
             let checked = new Set(savedSet ? courses.filter(c => savedSet.has(String(c.courseId))).map(c => String(c.courseId)) : courses.map(c => String(c.courseId)));
+
+            // Create dedicated selector modal (outside panel, with own scrolling)
+            let modal = document.getElementById("cxhw-sel-modal");
+            if (!modal) {
+                modal = document.createElement("div");
+                modal.id = "cxhw-sel-modal";
+                modal.style.cssText = "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:720px;max-height:85vh;background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);z-index:1000000;display:none;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif";
+                document.body.appendChild(modal);
+            }
 
             function renderSelector() {
                 const search = document.getElementById("cxhw-sel-search");
                 const q = search ? search.value.trim().toLowerCase() : "";
-                let html = '<div style="padding:12px 24px;background:#f8f9fa;border-bottom:1px solid #e9ecef;display:flex;gap:10px;align-items:center;flex-wrap:wrap">';
+                let html = '<div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;padding:16px 24px;display:flex;justify-content:space-between;align-items:center">';
+                html += '<span style="font-size:16px;font-weight:600">选择要追踪的课程</span>';
+                html += '<button id="cxhw-sel-x" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:15px">&times;</button>';
+                html += '</div>';
+                html += '<div style="padding:10px 24px;background:#f8f9fa;border-bottom:1px solid #e9ecef;display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
                 html += '<button class="cxhw-fb" id="cxhw-sel-all">全选</button>';
                 html += '<button class="cxhw-fb" id="cxhw-sel-none">全不选</button>';
                 html += '<button class="cxhw-fb" id="cxhw-sel-active">仅已开课</button>';
                 html += '<input id="cxhw-sel-search" type="text" placeholder="搜索课程名/教师" value="' + escAttr(q) + '" style="margin-left:auto;padding:4px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;width:180px">';
                 html += '</div>';
-                html += '<div style="overflow-y:auto;max-height:calc(85vh - 280px);padding:8px 0">';
+                html += '<div style="overflow-y:auto;max-height:calc(85vh - 160px);padding:4px 0">';
                 let visibleCount = 0;
                 courses.forEach(c => {
                     const id = String(c.courseId);
@@ -368,41 +382,56 @@
                     const isActive = isCourseActive(c);
                     const statusStr = !isActive ? '<span style="color:#6c757d;font-size:11px;margin-left:8px">已结课</span>' : '';
                     const newBadge = savedSet && !savedSet.has(id) ? '<span style="background:#667eea;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:8px">新</span>' : '';
-                    html += '<label style="display:flex;align-items:center;padding:8px 24px;cursor:pointer;gap:10px" class="cxhw-sel-row">';
+                    html += '<label style="display:flex;align-items:center;padding:6px 24px;cursor:pointer;gap:10px;border-bottom:1px solid #f8f9fa" class="cxhw-sel-row">';
                     html += '<input type="checkbox" data-cid="' + id + '"' + (checked.has(id) ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer">';
-                    html += '<span style="font-size:13px;font-weight:500;flex:1">' + escText(c.name) + '</span>';
-                    html += '<span style="font-size:12px;color:#6c757d;min-width:80px">' + escText(c.teacher || '') + '</span>';
+                    html += '<span style="font-size:13px;font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escText(c.name) + '</span>';
+                    html += '<span style="font-size:12px;color:#6c757d;min-width:60px">' + escText(c.teacher || '') + '</span>';
                     html += statusStr + newBadge;
                     html += '</label>';
                 });
                 if (!visibleCount) html += '<div style="padding:24px;text-align:center;color:#6c757d">无匹配课程</div>';
                 html += '</div>';
-                html += '<div style="padding:12px 24px;background:#f8f9fa;border-top:1px solid #e9ecef;display:flex;justify-content:space-between;align-items:center">';
+                // Fixed footer with confirm button
+                html += '<div style="padding:14px 24px;background:#f8f9fa;border-top:1px solid #e9ecef;display:flex;justify-content:space-between;align-items:center">';
                 html += '<span style="font-size:13px;color:#6c757d">已选 <b style="color:#667eea">' + checked.size + '</b>/' + courses.length + ' 个课程</span>';
                 html += '<div style="display:flex;gap:10px">';
                 html += '<button class="cxhw-fb" id="cxhw-sel-cancel">取消</button>';
                 html += '<button class="cxhw-fb on" id="cxhw-sel-confirm">确认</button>';
                 html += '</div></div>';
-                body.innerHTML = html;
+                modal.innerHTML = html;
 
                 // Event bindings
                 document.getElementById("cxhw-sel-all").onclick = () => { checked = new Set(courses.map(c => String(c.courseId))); renderSelector(); };
                 document.getElementById("cxhw-sel-none").onclick = () => { checked = new Set(); renderSelector(); };
                 document.getElementById("cxhw-sel-active").onclick = () => { checked = new Set(courses.filter(c => isCourseActive(c)).map(c => String(c.courseId))); renderSelector(); };
                 document.getElementById("cxhw-sel-search").oninput = () => renderSelector();
+                document.getElementById("cxhw-sel-x").onclick = () => {
+                    modal.style.display = "none";
+                    overlay.style.display = "none";
+                    selectedCourseIds = null;
+                    resolve(false);
+                };
                 document.getElementById("cxhw-sel-cancel").onclick = () => {
-                    selectedCourseIds = null; // cancel = all selected
+                    modal.style.display = "none";
+                    overlay.style.display = "none";
+                    selectedCourseIds = null;
                     resolve(false);
                 };
                 document.getElementById("cxhw-sel-confirm").onclick = () => {
                     if (checked.size === 0) { alert("请至少选择一个课程"); return; }
                     selectedCourseIds = checked.size === courses.length ? null : Array.from(checked);
+                    modal.style.display = "none";
+                    overlay.style.display = "none";
                     resolve(true);
                 };
-                body.querySelectorAll("input[data-cid]").forEach(cb => {
+                modal.querySelectorAll("input[data-cid]").forEach(cb => {
                     cb.onchange = () => { cb.checked ? checked.add(cb.dataset.cid) : checked.delete(cb.dataset.cid); };
                 });
             }
+
+            // Show modal
+            modal.style.display = "block";
+            overlay.style.display = "block";
             renderSelector();
         });
     }
