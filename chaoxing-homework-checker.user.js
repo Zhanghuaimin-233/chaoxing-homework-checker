@@ -75,6 +75,11 @@
         .cxhw-rf{padding:7px 18px;background:#667eea;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px}
         .cxhw-rf:hover{background:#5a6fd6}
         .cxhw-cc{font-size:11px;color:#6c757d}
+        .cxhw-autorefresh{display:flex;align-items:center;gap:8px;margin-left:auto}
+        .cxhw-autorefresh label{font-size:12px;color:#6c757d;display:flex;align-items:center;gap:4px;cursor:pointer}
+        .cxhw-autorefresh input[type=number]{width:50px;padding:2px 6px;border:1px solid #dee2e6;border-radius:4px;font-size:12px;text-align:center}
+        .cxhw-autorefresh input[type=checkbox]{width:14px;height:14px;cursor:pointer}
+        #cxhw-autorefresh-status{font-size:11px;color:#28a745}
         #cxhw-tg{position:fixed;bottom:24px;right:24px;width:52px;height:52px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border:none;border-radius:50%;color:#fff;font-size:22px;cursor:pointer;box-shadow:0 4px 16px rgba(102,126,234,.4);z-index:1000;display:flex;align-items:center;justify-content:center}
         #cxhw-tg:hover{transform:scale(1.1)}
     `);
@@ -441,6 +446,34 @@
         });
     }
 
+    // ===== Auto Refresh =====
+    let autoRefreshOnLoad = GM_getValue("cxhw_autoRefreshOnLoad", true);  // default ON
+    let autoRefreshInterval = GM_getValue("cxhw_autoRefreshInterval", 0);  // 0 = OFF, minutes
+    let autoRefreshTimer = null;
+
+    function startAutoRefreshTimer() {
+        if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+        if (autoRefreshInterval > 0) {
+            autoRefreshTimer = setInterval(() => {
+                if (!loading) doRefresh();
+            }, autoRefreshInterval * 60 * 1000);
+        }
+        updateAutoRefreshStatus();
+    }
+
+    function updateAutoRefreshStatus() {
+        const el = document.getElementById("cxhw-autorefresh-status");
+        if (!el) return;
+        if (autoRefreshInterval > 0) {
+            el.textContent = "自动刷新: 每" + autoRefreshInterval + "分钟";
+        } else if (autoRefreshOnLoad) {
+            el.textContent = "自动刷新: 页面加载时";
+        } else {
+            el.textContent = "";
+        }
+    }
+
     // ===== UI =====
     let panel, overlay, cachedData = null, loading = false;
 
@@ -497,11 +530,50 @@
             '<div class="cxhw-ft">' +
                 '<button class="cxhw-rf" id="cxhw-rfbtn">&#128260; 刷新数据</button>' +
                 '<span class="cxhw-cc" id="cxhw-cc"></span>' +
+                '<span id="cxhw-autorefresh-status" class="cxhw-cc" style="color:#28a745"></span>' +
+                '<div class="cxhw-autorefresh">' +
+                    '<label title="页面加载/刷新时自动获取最新数据"><input type="checkbox" id="cxhw-ar-onload"> 页面加载时刷新</label>' +
+                    '<label title="按固定时间间隔自动刷新"><input type="checkbox" id="cxhw-ar-interval-on"> 每</label>' +
+                    '<input type="number" id="cxhw-ar-interval" min="1" max="120" value="' + autoRefreshInterval + '" title="自动刷新间隔（分钟）"> 分钟' +
+                '</div>' +
             '</div>';
         document.body.appendChild(panel);
 
         document.getElementById("cxhw-xbtn").onclick = toggle;
         document.getElementById("cxhw-rfbtn").onclick = doRefresh;
+
+        // Auto-refresh controls
+        const arOnload = document.getElementById("cxhw-ar-onload");
+        const arIntervalOn = document.getElementById("cxhw-ar-interval-on");
+        const arInterval = document.getElementById("cxhw-ar-interval");
+        arOnload.checked = autoRefreshOnLoad;
+        arIntervalOn.checked = autoRefreshInterval > 0;
+        arInterval.value = autoRefreshInterval || 30;
+        arInterval.disabled = !arIntervalOn.checked;
+        updateAutoRefreshStatus();
+
+        arOnload.onchange = () => {
+            autoRefreshOnLoad = arOnload.checked;
+            GM_setValue("cxhw_autoRefreshOnLoad", autoRefreshOnLoad);
+            updateAutoRefreshStatus();
+        };
+        arIntervalOn.onchange = () => {
+            if (arIntervalOn.checked) {
+                autoRefreshInterval = parseInt(arInterval.value) || 30;
+            } else {
+                autoRefreshInterval = 0;
+            }
+            arInterval.disabled = !arIntervalOn.checked;
+            GM_setValue("cxhw_autoRefreshInterval", autoRefreshInterval);
+            startAutoRefreshTimer();
+        };
+        arInterval.onchange = () => {
+            const val = Math.max(1, Math.min(120, parseInt(arInterval.value) || 30));
+            arInterval.value = val;
+            autoRefreshInterval = val;
+            GM_setValue("cxhw_autoRefreshInterval", autoRefreshInterval);
+            if (arIntervalOn.checked) startAutoRefreshTimer();
+        };
 
         // Restore persisted filter state
         if (cfilter !== "all") {
@@ -756,6 +828,17 @@
             courseCache = null;
             homeworkCache = {};
         }
+
+        // Start interval timer if configured
+        startAutoRefreshTimer();
+
+        // Auto-refresh on page load: always fetch fresh data
+        if (autoRefreshOnLoad) {
+            doRefresh();
+            return;
+        }
+
+        // Fallback: fetch if cache invalid or missing data
         const checkCourses = applyCourseSelection(courseCache || []);
         const needsFetch = !isCourseCacheValid() || (checkCourses && checkCourses.some(c => {
             if (hideFinished && !isCourseActive(c)) return false;
