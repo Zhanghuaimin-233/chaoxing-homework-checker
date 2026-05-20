@@ -376,7 +376,7 @@
                 html += '<button class="cxhw-fb" id="cxhw-sel-active">仅已开课</button>';
                 html += '<input id="cxhw-sel-search" type="text" placeholder="搜索课程名/教师" value="' + escAttr(q) + '" style="margin-left:auto;padding:4px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;width:180px">';
                 html += '</div>';
-                html += '<div style="overflow-y:auto;max-height:calc(85vh - 160px);padding:4px 0">';
+                html += '<div style="overflow-y:auto;max-height:calc(85vh - 200px);padding:4px 0">';
                 let visibleCount = 0;
                 courses.forEach(c => {
                     const id = String(c.courseId);
