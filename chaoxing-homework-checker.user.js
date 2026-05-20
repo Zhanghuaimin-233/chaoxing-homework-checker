@@ -621,7 +621,7 @@
             html += '<span class="cxhw-ci">';
             if (pend) html += '<span class="r">' + pend + ' 未交</span> ';
             if (peer) html += '<span style="color:#6f42c1">' + peer + ' 待互评</span> ';
-            if (wait) html += wait + ' 待批阅 ';
+            if (wait) html += '<span style="color:#856404">' + wait + ' 待批阅</span> ';
             html += '<span class="g">' + done + ' 完成</span> ';
             html += '<span class="cxhw-ar">&#9660;</span></span></div>';
             html += '<div class="cxhw-hl">';
