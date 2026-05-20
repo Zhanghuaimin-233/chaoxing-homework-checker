@@ -63,6 +63,7 @@
         .cxhw-ss{padding:3px 10px;border-radius:10px;font-size:11px;font-weight:500;white-space:nowrap}
         .cxhw-ss-nj{background:#f8d7da;color:#721c24}
         .cxhw-ss-dp{background:#fff3cd;color:#856404}
+        .cxhw-ss-pr{background:#e8daef;color:#6f42c1}
         .cxhw-ss-ok{background:#d4edda;color:#155724}
         .cxhw-ss-ot{background:#e2e3e5;color:#383d41}
         .cxhw-ld{padding:60px 24px;text-align:center}
@@ -145,6 +146,7 @@
     // Normalize status text — platform uses traditional Chinese (待批閱/未交/已完成)
     function isPending(s) { return /未交|未提交/.test(s); }
     function isSubmitted(s) { return /待批/.test(s); }
+    function isPeerReview(s) { return /互评/.test(s); }
     function isCompleted(s) { return /已完成|已批改/.test(s); }
 
 
@@ -479,6 +481,7 @@
                 '<button class="cxhw-fb on" data-f="all">全部</button>' +
                 '<button class="cxhw-fb" data-f="pending">未交</button>' +
                 '<button class="cxhw-fb" data-f="submitted">待批改</button>' +
+                '<button class="cxhw-fb" data-f="peerreview">待互评</button>' +
                 '<button class="cxhw-fb" data-f="completed">已完成</button>' +
                 '<button class="cxhw-fb" id="cxhw-hidefin">&#9670; 隐藏已结课</button>' +
                 '<button class="cxhw-fb" id="cxhw-expand">展开/折叠</button>' +
@@ -600,11 +603,13 @@
             let hw = c.homework;
             if (cfilter === "pending") hw = hw.filter(h => isPending(h.status));
             else if (cfilter === "submitted") hw = hw.filter(h => isSubmitted(h.status));
+            else if (cfilter === "peerreview") hw = hw.filter(h => isPeerReview(h.status));
             else if (cfilter === "completed") hw = hw.filter(h => isCompleted(h.status));
             if (!hw.length) return;
             count += hw.length;
             const pend = c.homework.filter(h => isPending(h.status)).length;
             const wait = c.homework.filter(h => isSubmitted(h.status)).length;
+            const peer = c.homework.filter(h => isPeerReview(h.status)).length;
             const done = c.homework.filter(h => isCompleted(h.status)).length;
             const courseUrl = safeUrl(buildCourseUrl(c));
             html += '<div class="cxhw-cs">';
@@ -613,12 +618,14 @@
             html += '<span class="cxhw-ci">';
             if (pend) html += '<span class="r">' + pend + ' 未交</span> ';
             if (wait) html += wait + ' 待批改 ';
+            if (peer) html += '<span style="color:#6f42c1">' + peer + ' 待互评</span> ';
             html += '<span class="g">' + done + ' 完成</span> ';
             html += '<span class="cxhw-ar">&#9660;</span></span></div>';
             html += '<div class="cxhw-hl">';
             hw.forEach(h => {
                 const sc = isPending(h.status) ? "cxhw-ss-nj"
                     : isSubmitted(h.status) ? "cxhw-ss-dp"
+                    : isPeerReview(h.status) ? "cxhw-ss-pr"
                     : isCompleted(h.status) ? "cxhw-ss-ok" : "cxhw-ss-ot";
                 const hwUrl = h.url ? safeUrl(h.url) : "";
                 html += '<div class="cxhw-hi"' + (hwUrl ? ' data-url="' + escAttr(hwUrl) + '"' : '') + '><div>';
