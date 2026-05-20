@@ -143,10 +143,10 @@
         return "https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid=" + c.courseId + "&clazzid=" + c.classId + "&cpi=" + c.cpi + "&ismooc2=1&v=2";
     }
 
-    // Normalize status text — platform uses traditional Chinese (待批閱/未交/已完成)
+    // Normalize status text — platform uses mixed traditional/simplified Chinese
     function isPending(s) { return /未交|未提交/.test(s); }
-    function isSubmitted(s) { return /待批/.test(s); }
-    function isPeerReview(s) { return /互评/.test(s); }
+    function isPeerReview(s) { return /互評|互评/.test(s); }
+    function isSubmitted(s) { return /待批閱|待批阅|待批改/.test(s); }
     function isCompleted(s) { return /已完成|已批改/.test(s); }
 
 
@@ -367,6 +367,9 @@
                 html += '<span style="font-size:16px;font-weight:600">选择要追踪的课程</span>';
                 html += '<button id="cxhw-sel-x" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:15px">&times;</button>';
                 html += '</div>';
+                html += '<div style="padding:8px 24px;background:#fff5f5;border-bottom:1px solid #fecaca">';
+                html += '<span style="color:#dc3545;font-size:12px">&#9888; 只建议勾选需要的课程，全选或课程量过大可能导致平台风控，建议追踪课程不超过12个</span>';
+                html += '</div>';
                 html += '<div style="padding:10px 24px;background:#f8f9fa;border-bottom:1px solid #e9ecef;display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
                 html += '<button class="cxhw-fb" id="cxhw-sel-all">全选</button>';
                 html += '<button class="cxhw-fb" id="cxhw-sel-none">全不选</button>';
@@ -480,8 +483,8 @@
             '<div class="cxhw-tb">' +
                 '<button class="cxhw-fb on" data-f="all">全部</button>' +
                 '<button class="cxhw-fb" data-f="pending">未交</button>' +
-                '<button class="cxhw-fb" data-f="submitted">待批改</button>' +
                 '<button class="cxhw-fb" data-f="peerreview">待互评</button>' +
+                '<button class="cxhw-fb" data-f="submitted">待批阅</button>' +
                 '<button class="cxhw-fb" data-f="completed">已完成</button>' +
                 '<button class="cxhw-fb" id="cxhw-hidefin">&#9670; 隐藏已结课</button>' +
                 '<button class="cxhw-fb" id="cxhw-expand">展开/折叠</button>' +
@@ -617,15 +620,15 @@
             html += '<span class="cxhw-cn"><a href="' + courseUrl + '" target="_blank" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none;">' + escText(c.name) + '</a></span>';
             html += '<span class="cxhw-ci">';
             if (pend) html += '<span class="r">' + pend + ' 未交</span> ';
-            if (wait) html += wait + ' 待批改 ';
             if (peer) html += '<span style="color:#6f42c1">' + peer + ' 待互评</span> ';
+            if (wait) html += wait + ' 待批阅 ';
             html += '<span class="g">' + done + ' 完成</span> ';
             html += '<span class="cxhw-ar">&#9660;</span></span></div>';
             html += '<div class="cxhw-hl">';
             hw.forEach(h => {
                 const sc = isPending(h.status) ? "cxhw-ss-nj"
-                    : isSubmitted(h.status) ? "cxhw-ss-dp"
                     : isPeerReview(h.status) ? "cxhw-ss-pr"
+                    : isSubmitted(h.status) ? "cxhw-ss-dp"
                     : isCompleted(h.status) ? "cxhw-ss-ok" : "cxhw-ss-ot";
                 const hwUrl = h.url ? safeUrl(h.url) : "";
                 html += '<div class="cxhw-hi"' + (hwUrl ? ' data-url="' + escAttr(hwUrl) + '"' : '') + '><div>';
