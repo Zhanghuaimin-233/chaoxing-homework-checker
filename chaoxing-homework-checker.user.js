@@ -79,6 +79,9 @@
         .cxhw-autorefresh label{font-size:12px;color:#6c757d;display:flex;align-items:center;gap:4px;cursor:pointer}
         .cxhw-autorefresh input[type=number]{width:50px;padding:2px 6px;border:1px solid #dee2e6;border-radius:4px;font-size:12px;text-align:center}
         .cxhw-autorefresh input[type=checkbox]{width:14px;height:14px;cursor:pointer}
+        #cxhw-sel-modal .cxhw-cb{width:18px;height:18px;border:2px solid #adb5bd;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .15s}
+        #cxhw-sel-modal .cxhw-cb.checked{background:#667eea;border-color:#667eea}
+        #cxhw-sel-modal .cxhw-cb.checked::after{content:"\\2714";color:#fff;font-size:12px;line-height:1}
         #cxhw-autorefresh-status{font-size:11px;color:#28a745}
         #cxhw-tg{position:fixed;bottom:24px;right:24px;width:52px;height:52px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border:none;border-radius:50%;color:#fff;font-size:22px;cursor:pointer;box-shadow:0 4px 16px rgba(102,126,234,.4);z-index:1000;display:flex;align-items:center;justify-content:center}
         #cxhw-tg:hover{transform:scale(1.1)}
@@ -393,7 +396,7 @@
                     const statusStr = !isActive ? '<span style="color:#6c757d;font-size:11px;margin-left:8px">已结课</span>' : '';
                     const newBadge = savedSet && !savedSet.has(id) ? '<span style="background:#667eea;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:8px">新</span>' : '';
                     html += '<label style="display:flex;align-items:center;padding:6px 24px;cursor:pointer;gap:10px;border-bottom:1px solid #f8f9fa" class="cxhw-sel-row">';
-                    html += '<input type="checkbox" data-cid="' + id + '"' + (checked.has(id) ? ' checked' : '') + ' style="width:16px;height:16px;cursor:pointer">';
+                    html += '<div class="cxhw-cb' + (checked.has(id) ? ' checked' : '') + '" data-cid="' + id + '"></div>';
                     html += '<span style="font-size:13px;font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escText(c.name) + '</span>';
                     html += '<span style="font-size:12px;color:#6c757d;min-width:60px">' + escText(c.teacher || '') + '</span>';
                     html += statusStr + newBadge;
@@ -403,7 +406,7 @@
                 html += '</div>';
                 // Fixed footer with confirm button
                 html += '<div style="padding:14px 24px;background:#f8f9fa;border-top:1px solid #e9ecef;display:flex;justify-content:space-between;align-items:center">';
-                html += '<span style="font-size:13px;color:#6c757d">已选 <b style="color:#667eea">' + checked.size + '</b>/' + courses.length + ' 个课程</span>';
+                html += '<span style="font-size:13px;color:#6c757d">已选 <b id="cxhw-sel-count" style="color:#667eea">' + checked.size + '</b>/' + courses.length + ' 个课程</span>';
                 html += '<div style="display:flex;gap:10px">';
                 html += '<button class="cxhw-fb" id="cxhw-sel-cancel">取消</button>';
                 html += '<button class="cxhw-fb on" id="cxhw-sel-confirm">确认</button>';
@@ -432,8 +435,14 @@
                     overlay.style.display = "none";
                     resolve(true);
                 };
-                modal.querySelectorAll("input[data-cid]").forEach(cb => {
-                    cb.onchange = () => { cb.checked ? checked.add(cb.dataset.cid) : checked.delete(cb.dataset.cid); };
+                modal.querySelectorAll(".cxhw-cb[data-cid]").forEach(cb => {
+                    cb.onclick = (e) => {
+                        e.stopPropagation();
+                        const cid = cb.dataset.cid;
+                        if (checked.has(cid)) { checked.delete(cid); cb.classList.remove("checked"); }
+                        else { checked.add(cid); cb.classList.add("checked"); }
+                        document.getElementById("cxhw-sel-count").textContent = checked.size;
+                    };
                 });
             }
 
