@@ -145,9 +145,9 @@
 
     // Normalize status text — platform uses mixed traditional/simplified Chinese
     function isPending(s) { return /未交|未提交/.test(s); }
-    function isPeerReview(s) { return /互評|互评/.test(s); }
+    function isPeerReview(s) { return /待互評|待互评/.test(s); }
     function isSubmitted(s) { return /待批閱|待批阅|待批改/.test(s); }
-    function isCompleted(s) { return /已完成|已批改/.test(s); }
+    function isCompleted(s) { return /已完成|已批改|已互評|已互评/.test(s); }
 
 
     // ===== Core Logic =====
