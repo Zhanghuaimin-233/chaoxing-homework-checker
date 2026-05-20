@@ -418,13 +418,11 @@
                 document.getElementById("cxhw-sel-x").onclick = () => {
                     modal.style.display = "none";
                     overlay.style.display = "none";
-                    selectedCourseIds = null;
                     resolve(false);
                 };
                 document.getElementById("cxhw-sel-cancel").onclick = () => {
                     modal.style.display = "none";
                     overlay.style.display = "none";
-                    selectedCourseIds = null;
                     resolve(false);
                 };
                 document.getElementById("cxhw-sel-confirm").onclick = () => {
