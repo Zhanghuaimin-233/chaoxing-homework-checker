@@ -35,8 +35,8 @@
         .cxhw-fb{padding:5px 14px;border:1px solid #dee2e6;border-radius:16px;background:#fff;cursor:pointer;font-size:13px}
         .cxhw-fb.on{background:#667eea;color:#fff;border-color:#667eea}
         .cxhw-fb:hover:not(.on){border-color:#667eea;color:#667eea}
-        #cxhw-hidefin{border-style:dashed;font-size:12px;padding:4px 10px}
-        #cxhw-hidefin.on{background:#6c757d;border-color:#6c757d}
+        #cxhw-showignored{border-style:dashed;font-size:12px;padding:4px 10px}
+        #cxhw-showignored.on{background:#6c757d;border-color:#6c757d}
         #cxhw-expand{border-style:dashed;font-size:12px;padding:4px 10px}
         .cxhw-sts{margin-left:auto;font-size:13px;color:#6c757d}
         .cxhw-sts b{color:#667eea}
@@ -345,6 +345,44 @@
         return all.filter(c => idSet.has(String(c.courseId)));
     }
 
+    // ===== Ignore Homework =====
+    let ignoredHomework = {};
+    let showIgnored = false;
+
+    function loadIgnoredHomework() {
+        try {
+            const s = GM_getValue("cxhw_ignored_homework", "{}");
+            const parsed = JSON.parse(s);
+            if (parsed && typeof parsed === "object") ignoredHomework = parsed;
+        } catch (e) {}
+    }
+
+    function saveIgnoredHomework() {
+        GM_setValue("cxhw_ignored_homework", JSON.stringify(ignoredHomework));
+    }
+
+    function getHomeworkKey(courseId, h) {
+        // Parse workId from URL for stable key
+        const m = (h.url || "").match(/workId=(\d+)/);
+        return m ? courseId + ":" + m[1] : courseId + ":" + h.title;
+    }
+
+    function isIgnored(courseId, h) {
+        return !!ignoredHomework[getHomeworkKey(courseId, h)];
+    }
+
+    function ignoreHomework(courseId, courseName, h) {
+        const key = getHomeworkKey(courseId, h);
+        ignoredHomework[key] = { title: h.title, courseName, ignoredAt: Date.now() };
+        saveIgnoredHomework();
+    }
+
+    function unignoreHomework(courseId, h) {
+        const key = getHomeworkKey(courseId, h);
+        delete ignoredHomework[key];
+        saveIgnoredHomework();
+    }
+
     // ===== Course Selection =====
     function applyCourseSelection(courses) {
         if (!selectedCourseIds) return courses;
@@ -382,11 +420,14 @@
                 html += '<button class="cxhw-fb" id="cxhw-sel-all">全选</button>';
                 html += '<button class="cxhw-fb" id="cxhw-sel-none">全不选</button>';
                 html += '<button class="cxhw-fb" id="cxhw-sel-active">仅已开课</button>';
+                html += '<label style="margin-left:8px;font-size:12px;color:#6c757d;cursor:pointer;display:flex;align-items:center;gap:4px"><div class="cxhw-cb' + (hideFinished ? ' checked' : '') + '" id="cxhw-sel-hidefin-cb"></div> 隐藏已结课</label>';
                 html += '<input id="cxhw-sel-search" type="text" placeholder="搜索课程名/教师" value="' + escAttr(q) + '" style="margin-left:auto;padding:4px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;width:180px">';
                 html += '</div>';
                 html += '<div style="overflow-y:auto;max-height:calc(85vh - 200px);padding:4px 0">';
                 let visibleCount = 0;
-                courses.forEach(c => {
+                const displayCourses = hideFinished ? courses.filter(c => isCourseActive(c)) : courses;
+                const hiddenCount = courses.length - displayCourses.length;
+                displayCourses.forEach(c => {
                     const id = String(c.courseId);
                     const name = (c.name || "").toLowerCase();
                     const teacher = (c.teacher || "").toLowerCase();
@@ -406,7 +447,8 @@
                 html += '</div>';
                 // Fixed footer with confirm button
                 html += '<div style="padding:14px 24px;background:#f8f9fa;border-top:1px solid #e9ecef;display:flex;justify-content:space-between;align-items:center">';
-                html += '<span style="font-size:13px;color:#6c757d">已选 <b id="cxhw-sel-count" style="color:#667eea">' + checked.size + '</b>/' + courses.length + ' 个课程</span>';
+                const countNote = hiddenCount > 0 ? '（已隐藏 ' + hiddenCount + ' 门已结课课程）' : '';
+                html += '<span style="font-size:13px;color:#6c757d">已选 <b id="cxhw-sel-count" style="color:#667eea">' + checked.size + '</b>/' + displayCourses.length + ' 个课程' + countNote + '</span>';
                 html += '<div style="display:flex;gap:10px">';
                 html += '<button class="cxhw-fb" id="cxhw-sel-cancel">取消</button>';
                 html += '<button class="cxhw-fb on" id="cxhw-sel-confirm">确认</button>';
@@ -414,10 +456,15 @@
                 modal.innerHTML = html;
 
                 // Event bindings
-                document.getElementById("cxhw-sel-all").onclick = () => { checked = new Set(courses.map(c => String(c.courseId))); renderSelector(); };
+                document.getElementById("cxhw-sel-all").onclick = () => { checked = new Set(displayCourses.map(c => String(c.courseId))); renderSelector(); };
                 document.getElementById("cxhw-sel-none").onclick = () => { checked = new Set(); renderSelector(); };
-                document.getElementById("cxhw-sel-active").onclick = () => { checked = new Set(courses.filter(c => isCourseActive(c)).map(c => String(c.courseId))); renderSelector(); };
+                document.getElementById("cxhw-sel-active").onclick = () => { checked = new Set(displayCourses.filter(c => isCourseActive(c)).map(c => String(c.courseId))); renderSelector(); };
                 document.getElementById("cxhw-sel-search").oninput = () => renderSelector();
+                document.getElementById("cxhw-sel-hidefin-cb").onclick = () => {
+                    hideFinished = !hideFinished;
+                    GM_setValue("cxhw_hideFinished", hideFinished);
+                    renderSelector();
+                };
                 document.getElementById("cxhw-sel-x").onclick = () => {
                     modal.style.display = "none";
                     overlay.style.display = "none";
@@ -526,7 +573,7 @@
                 '<button class="cxhw-fb" data-f="peerreview">待互评</button>' +
                 '<button class="cxhw-fb" data-f="submitted">待批阅</button>' +
                 '<button class="cxhw-fb" data-f="completed">已完成</button>' +
-                '<button class="cxhw-fb" id="cxhw-hidefin">&#9670; 隐藏已结课</button>' +
+                '<button class="cxhw-fb" id="cxhw-showignored">&#8634; 显示已忽略</button>' +
                 '<button class="cxhw-fb" id="cxhw-expand">展开/折叠</button>' +
                 '<button class="cxhw-fb" id="cxhw-coursesel">&#9776; 课程选择</button>' +
                 '<span class="cxhw-sts">共 <b id="cxhw-cnt">0</b> 项作业</span>' +
@@ -588,9 +635,8 @@
                 b.classList.toggle("on", b.getAttribute("data-f") === cfilter);
             });
         }
-        if (hideFinished) {
-            document.getElementById("cxhw-hidefin").classList.add("on");
-        }
+
+        loadIgnoredHomework();
 
         panel.querySelectorAll(".cxhw-fb[data-f]").forEach(b => {
             b.onclick = () => {
@@ -602,18 +648,10 @@
             };
         });
 
-        document.getElementById("cxhw-hidefin").onclick = function() {
-            hideFinished = !hideFinished;
-            GM_setValue("cxhw_hideFinished", hideFinished);
-            this.classList.toggle("on", hideFinished);
-            // When turning off hideFinished, check if closed courses need homework fetch
-            if (!hideFinished && courseCache) {
-                const missing = courseCache.filter(c => !isCourseActive(c) && !homeworkCache[c.courseId]);
-                if (missing.length > 0) {
-                    loadData();
-                    return;
-                }
-            }
+        // Show/hide ignored homework toggle
+        document.getElementById("cxhw-showignored").onclick = function() {
+            showIgnored = !showIgnored;
+            this.classList.toggle("on", showIgnored);
             render();
         };
 
@@ -640,13 +678,35 @@
         // Event delegation for course headers and homework items
         const body = document.getElementById("cxhw-body");
         body.addEventListener("click", e => {
+            // Ignore/unignore button
+            const ignoreBtn = e.target.closest(".cxhw-ignore-btn");
+            if (ignoreBtn) {
+                e.stopPropagation();
+                const action = ignoreBtn.dataset.action;
+                const cid = ignoreBtn.dataset.cid;
+                if (action === "ignore") {
+                    ignoreHomework(cid, ignoreBtn.dataset.cname, {
+                        title: ignoreBtn.dataset.title,
+                        url: ignoreBtn.dataset.url
+                    });
+                } else if (action === "unignore") {
+                    // Find homework object from cachedData to pass to unignoreHomework
+                    const key = ignoreBtn.dataset.key;
+                    delete ignoredHomework[key];
+                    saveIgnoredHomework();
+                }
+                render();
+                return;
+            }
+            // Course header toggle
             const ch = e.target.closest(".cxhw-ch");
             if (ch && !e.target.closest("a")) {
                 ch.classList.toggle("open");
                 return;
             }
+            // Homework item click
             const hi = e.target.closest(".cxhw-hi[data-url]");
-            if (hi) {
+            if (hi && !isIgnored(hi.dataset.cid, {url: hi.getAttribute("data-url")})) {
                 const url = safeUrl(hi.getAttribute("data-url"));
                 if (url) window.open(url, "_blank");
             }
@@ -680,15 +740,17 @@
         cachedData.forEach(c => {
             if (c.hwPending) { pendingCount++; return; }
             if (c.error) { errorCount++; return; }
-            if (hideFinished && !isCourseActive(c)) return;
             if (!c.homework || !c.homework.length) return;
             let hw = c.homework;
+            // Status filter
             if (cfilter === "pending") hw = hw.filter(h => isPending(h.status));
             else if (cfilter === "submitted") hw = hw.filter(h => isSubmitted(h.status));
             else if (cfilter === "peerreview") hw = hw.filter(h => isPeerReview(h.status));
             else if (cfilter === "completed") hw = hw.filter(h => isCompleted(h.status));
-            if (!hw.length) return;
-            count += hw.length;
+            // Ignore filter: hide ignored items unless showIgnored is on
+            const hwVisible = hw.filter(h => showIgnored || !isIgnored(c.courseId, h));
+            if (!hwVisible.length && !showIgnored) return;
+            count += hwVisible.filter(h => !isIgnored(c.courseId, h)).length;
             const pend = c.homework.filter(h => isPending(h.status)).length;
             const wait = c.homework.filter(h => isSubmitted(h.status)).length;
             const peer = c.homework.filter(h => isPeerReview(h.status)).length;
@@ -704,16 +766,27 @@
             html += '<span class="g">' + done + ' 完成</span> ';
             html += '<span class="cxhw-ar">&#9660;</span></span></div>';
             html += '<div class="cxhw-hl">';
-            hw.forEach(h => {
+            hwVisible.forEach(h => {
+                const ignored = isIgnored(c.courseId, h);
                 const sc = isPending(h.status) ? "cxhw-ss-nj"
                     : isPeerReview(h.status) ? "cxhw-ss-pr"
                     : isSubmitted(h.status) ? "cxhw-ss-dp"
                     : isCompleted(h.status) ? "cxhw-ss-ok" : "cxhw-ss-ot";
                 const hwUrl = h.url ? safeUrl(h.url) : "";
-                html += '<div class="cxhw-hi"' + (hwUrl ? ' data-url="' + escAttr(hwUrl) + '"' : '') + '><div>';
-                html += '<div class="cxhw-ht">' + escText(h.title) + '</div>';
+                const mutedStyle = ignored ? 'opacity:0.45;' : '';
+                html += '<div class="cxhw-hi"' + (hwUrl ? ' data-url="' + escAttr(hwUrl) + '"' : '') + ' style="' + mutedStyle + '">';
+                html += '<div style="flex:1;min-width:0">';
+                html += '<div class="cxhw-ht">' + escText(h.title) + (ignored ? ' <span style="font-size:11px;color:#999">[已忽略]</span>' : '') + '</div>';
                 if (h.deadline) html += '<div class="cxhw-hd">&#9200; ' + escText(h.deadline) + '</div>';
-                html += '</div><span class="cxhw-ss ' + sc + '">' + escText(h.status) + '</span></div>';
+                html += '</div>';
+                html += '<div style="display:flex;align-items:center;gap:8px">';
+                html += '<span class="cxhw-ss ' + sc + '">' + escText(h.status) + '</span>';
+                if (ignored) {
+                    html += '<button class="cxhw-ignore-btn" data-action="unignore" data-cid="' + c.courseId + '" data-key="' + escAttr(getHomeworkKey(c.courseId, h)) + '" style="font-size:11px;padding:2px 8px;border:1px solid #adb5bd;border-radius:10px;background:#fff;cursor:pointer;color:#28a745">恢复</button>';
+                } else {
+                    html += '<button class="cxhw-ignore-btn" data-action="ignore" data-cid="' + c.courseId + '" data-cname="' + escAttr(c.name) + '" data-key="' + escAttr(getHomeworkKey(c.courseId, h)) + '" data-title="' + escAttr(h.title) + '" data-url="' + escAttr(h.url || '') + '" style="font-size:11px;padding:2px 8px;border:1px solid #dee2e6;border-radius:10px;background:#fff;cursor:pointer;color:#dc3545;opacity:0;transition:opacity .15s" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0">忽略</button>';
+                }
+                html += '</div></div>';
             });
             html += '</div></div>';
         });
@@ -772,9 +845,8 @@
             const selectedCourses = applyCourseSelection(courseCache);
 
             // Layer 2: determine which courses need homework fetch
-            let skippedFinished = 0, skippedCached = 0;
+            let skippedCached = 0;
             const coursesToFetch = selectedCourses.filter(c => {
-                if (hideFinished && !isCourseActive(c)) { skippedFinished++; return false; }
                 if (forceAll) return true;
                 const cached = homeworkCache[c.courseId];
                 if (!cached) return true;
@@ -782,10 +854,7 @@
                 if ((Date.now() - cached.time) < CONFIG.cacheTime) { skippedCached++; return false; }
                 return true;
             });
-            const skipMsg = [
-                skippedFinished > 0 ? (skippedFinished + " 个已结课") : "",
-                skippedCached > 0 ? (skippedCached + " 个已缓存") : ""
-            ].filter(Boolean).join("、");
+            const skipMsg = skippedCached > 0 ? (skippedCached + " 个已缓存") : "";
 
             if (coursesToFetch.length > 0) {
                 const selStr = selectedCourseIds ? "（已选 " + selectedCourses.length + "/" + courseCache.length + " 个课程）" : "";
