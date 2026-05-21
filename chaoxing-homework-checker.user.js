@@ -839,13 +839,28 @@
         // Start interval timer if configured
         startAutoRefreshTimer();
 
-        // Auto-refresh on page load: only on refresh, not on new tab navigation
-        const isRefresh = !!sessionStorage.getItem("cxhw_loaded");
-        sessionStorage.setItem("cxhw_loaded", "1");
+        // Auto-refresh on page load: distinguish refresh vs new-tab vs in-tab navigation
+        const navEntry = performance.getEntriesByType("navigation")[0];
+        const isReload = navEntry && navEntry.type === "reload";
+        const storedUrl = sessionStorage.getItem("cxhw_loaded");
+        sessionStorage.setItem("cxhw_loaded", location.href);
 
-        if (autoRefreshOnLoad && isRefresh) {
-            doRefresh();
-            return;
+        if (autoRefreshOnLoad) {
+            if (isReload) {
+                // F5 or browser reload button — always refresh
+                doRefresh();
+                return;
+            }
+            if (!storedUrl) {
+                // First load in this tab
+                if (!document.referrer || !document.referrer.startsWith(location.origin)) {
+                    // Fresh browser tab (address bar, bookmark, external link) — refresh
+                    doRefresh();
+                    return;
+                }
+                // Same-origin referrer = opened from 学习通 link — skip
+            }
+            // In-tab navigation or new tab from platform — skip
         }
 
         // Fallback: fetch if cache invalid or missing data
