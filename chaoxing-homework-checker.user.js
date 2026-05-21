@@ -839,8 +839,11 @@
         // Start interval timer if configured
         startAutoRefreshTimer();
 
-        // Auto-refresh on page load: always fetch fresh data
-        if (autoRefreshOnLoad) {
+        // Auto-refresh on page load: only on refresh, not on new tab navigation
+        const isRefresh = !!sessionStorage.getItem("cxhw_loaded");
+        sessionStorage.setItem("cxhw_loaded", "1");
+
+        if (autoRefreshOnLoad && isRefresh) {
             doRefresh();
             return;
         }
