@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         学习通作业统一查看
 // @namespace    https://github.com/chaoxing-homework-checker
-// @version      3.0.0
+// @version      2.0.0
 // @description  检测学习通当前账号所有课程的作业情况并统一显示
 // @author       Assistant
 // @match        *://*.chaoxing.com/*
@@ -21,19 +21,7 @@
     // Skip iframes — only inject UI in top-level window
     if (window !== window.top) return;
 
-    const CONFIG = { concurrency: 2, requestDelay: 500, cacheTime: 30 * 60 * 1000, requestTimeout: 15000, maxRetries: 3, requestJitter: 1500, batchSize: 8, batchCooldown: 8000, batchCooldownJitter: 7000, backoffBase: 2000, backoffMax: 60000, safeModeConcurrency: 1 };
-
-    // Anti-detection rate control
-    const rate = { delayMultiplier: 1, recentFailures: 0, recentSuccesses: 0, safeMode: GM_getValue("cxhw_safeMode", false) };
-    function jitteredDelay(base, jitter) { return base + Math.floor(Math.random() * jitter); }
-    function backoffDelay(attempt) { return Math.min(CONFIG.backoffMax, CONFIG.backoffBase * Math.pow(2, attempt)) + Math.floor(Math.random() * 1500); }
-    function adaptiveDelay() { return jitteredDelay(CONFIG.requestDelay * rate.delayMultiplier, CONFIG.requestJitter); }
-    function getConcurrency() { return rate.safeMode ? CONFIG.safeModeConcurrency : CONFIG.concurrency; }
-    function onSuccess() { rate.recentSuccesses++; rate.recentFailures = Math.max(0, rate.recentFailures - 1); if (rate.recentSuccesses >= 5 && rate.delayMultiplier > 1) { rate.delayMultiplier = Math.max(1, rate.delayMultiplier * 0.8); rate.recentSuccesses = 0; } }
-    function onFailure() { rate.recentFailures++; rate.recentSuccesses = 0; if (rate.recentFailures >= 3) { rate.delayMultiplier = Math.min(4, rate.delayMultiplier * 1.5); rate.recentFailures = 0; } }
-
-    const RISK_PATTERNS = [/captcha/i, /verify/i, /验证码/, /安全验证|身份验证/, /风险|异常访问/, /passport2\.chaoxing\.com/, /numcode/, /validateCode/];
-    function isRiskControl(text, url) { return RISK_PATTERNS.some(p => p.test(text) || p.test(url)); }
+    const CONFIG = { concurrency: 3, requestDelay: 500, cacheTime: 30 * 60 * 1000, requestTimeout: 15000, maxRetries: 2 };
 
     // ===== Styles =====
     GM_addStyle(`
@@ -50,8 +38,6 @@
         #cxhw-hidefin{border-style:dashed;font-size:12px;padding:4px 10px}
         #cxhw-hidefin.on{background:#6c757d;border-color:#6c757d}
         #cxhw-expand{border-style:dashed;font-size:12px;padding:4px 10px}
-        #cxhw-safemode{border-style:dashed;font-size:12px;padding:4px 10px}
-        #cxhw-safemode.on{background:#dc3545;border-color:#dc3545}
         .cxhw-sts{margin-left:auto;font-size:13px;color:#6c757d}
         .cxhw-sts b{color:#667eea}
         .cxhw-cnt{overflow-y:auto;max-height:calc(85vh - 200px)}
@@ -77,6 +63,7 @@
         .cxhw-ss{padding:3px 10px;border-radius:10px;font-size:11px;font-weight:500;white-space:nowrap}
         .cxhw-ss-nj{background:#f8d7da;color:#721c24}
         .cxhw-ss-dp{background:#fff3cd;color:#856404}
+        .cxhw-ss-pr{background:#e8daef;color:#6f42c1}
         .cxhw-ss-ok{background:#d4edda;color:#155724}
         .cxhw-ss-ot{background:#e2e3e5;color:#383d41}
         .cxhw-ld{padding:60px 24px;text-align:center}
@@ -88,6 +75,14 @@
         .cxhw-rf{padding:7px 18px;background:#667eea;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px}
         .cxhw-rf:hover{background:#5a6fd6}
         .cxhw-cc{font-size:11px;color:#6c757d}
+        .cxhw-autorefresh{display:flex;align-items:center;gap:8px;margin-left:auto}
+        .cxhw-autorefresh label{font-size:12px;color:#6c757d;display:flex;align-items:center;gap:4px;cursor:pointer}
+        .cxhw-autorefresh input[type=number]{width:50px;padding:2px 6px;border:1px solid #dee2e6;border-radius:4px;font-size:12px;text-align:center}
+        .cxhw-autorefresh input[type=checkbox]{width:14px;height:14px;cursor:pointer}
+        #cxhw-sel-modal .cxhw-cb{width:18px;height:18px;border:2px solid #adb5bd;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .15s}
+        #cxhw-sel-modal .cxhw-cb.checked{background:#667eea;border-color:#667eea}
+        #cxhw-sel-modal .cxhw-cb.checked::after{content:"\\2714";color:#fff;font-size:12px;line-height:1}
+        #cxhw-autorefresh-status{font-size:11px;color:#28a745}
         #cxhw-tg{position:fixed;bottom:24px;right:24px;width:52px;height:52px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border:none;border-radius:50%;color:#fff;font-size:22px;cursor:pointer;box-shadow:0 4px 16px rgba(102,126,234,.4);z-index:1000;display:flex;align-items:center;justify-content:center}
         #cxhw-tg:hover{transform:scale(1.1)}
     `);
@@ -105,16 +100,9 @@
                 method: "GET",
                 url,
                 timeout: CONFIG.requestTimeout,
-                headers: {
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Accept-Language": (navigator.language || "zh-CN") + ",zh-CN;q=0.9,zh;q=0.8,en;q=0.7",
-                    "X-Requested-With": "XMLHttpRequest",
-                },
+                headers: { "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
                 onload: r => {
-                    const text = r.responseText || "";
-                    const finalUrl = r.finalUrl || url;
-                    if (isRiskControl(text, finalUrl)) { reject(new Error("触发风控/验证码，请稍后再试或开启安全模式")); return; }
-                    if (r.status >= 200 && r.status < 300) resolve(text);
+                    if (r.status >= 200 && r.status < 300) resolve(r.responseText);
                     else reject(new Error("HTTP " + r.status + " for " + url.substring(0, 80)));
                 },
                 onerror: () => reject(new Error("Network error for " + url.substring(0, 80))),
@@ -125,13 +113,10 @@
 
     async function gmFetchWithRetry(url, retries = 0) {
         try {
-            const result = await gmFetch(url);
-            onSuccess();
-            return result;
+            return await gmFetch(url);
         } catch (e) {
-            onFailure();
             if (retries < CONFIG.maxRetries && /Timeout|Network error|HTTP 5\d{2}/.test(e.message)) {
-                await delay(backoffDelay(retries));
+                await delay(1000 * (retries + 1));
                 return gmFetchWithRetry(url, retries + 1);
             }
             throw e;
@@ -166,10 +151,11 @@
         return "https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid=" + c.courseId + "&clazzid=" + c.classId + "&cpi=" + c.cpi + "&ismooc2=1&v=2";
     }
 
-    // Normalize status text — platform uses traditional Chinese (待批閱/未交/已完成)
+    // Normalize status text — platform uses mixed traditional/simplified Chinese
     function isPending(s) { return /未交|未提交/.test(s); }
-    function isSubmitted(s) { return /待批/.test(s); }
-    function isCompleted(s) { return /已完成|已批改/.test(s); }
+    function isPeerReview(s) { return /待互評|待互评/.test(s); }
+    function isSubmitted(s) { return /待批閱|待批阅|待批改/.test(s); }
+    function isCompleted(s) { return /已完成|已批改|已互評|已互评/.test(s); }
 
 
     // ===== Core Logic =====
@@ -263,7 +249,7 @@
                 all = all.concat(res.items);
                 total = res.totalPages;
                 page++;
-                if (page <= total) await delay(adaptiveDelay());
+                if (page <= total) await delay(CONFIG.requestDelay);
             } while (page <= total);
             return Object.assign({}, course, { homework: all, error: null });
         } catch (e) {
@@ -271,36 +257,22 @@
         }
     }
 
-    // Batch processing with cooldowns + pause support
+    // P2: progress callback
     async function fetchAllHomework(courses, onProgress) {
         const results = new Array(courses.length);
         let done = 0;
         let idx = 0;
-        let batchLimit = 0;
-        const concurrency = getConcurrency();
-
         async function worker() {
-            while (idx < batchLimit) {
+            while (idx < courses.length) {
                 const i = idx++;
                 results[i] = await fetchCourseHomework(courses[i]);
                 done++;
                 if (onProgress) onProgress(done, courses.length);
-                if (idx < batchLimit) await delay(adaptiveDelay());
             }
         }
-
-        for (let batchStart = 0; batchStart < courses.length; batchStart += CONFIG.batchSize) {
-            const batchEnd = Math.min(batchStart + CONFIG.batchSize, courses.length);
-            idx = batchStart;
-            batchLimit = batchEnd;
-            const workers = [];
-            for (let i = 0; i < Math.min(concurrency, batchEnd - batchStart); i++) workers.push(worker());
-            await Promise.all(workers);
-            if (batchEnd < courses.length) {
-                if (onProgress) onProgress(done, courses.length);
-                await delay(jitteredDelay(CONFIG.batchCooldown, CONFIG.batchCooldownJitter));
-            }
-        }
+        const workers = [];
+        for (let i = 0; i < CONFIG.concurrency; i++) workers.push(worker());
+        await Promise.all(workers);
         return results;
     }
 
@@ -310,6 +282,8 @@
     let courseCache = null, courseCacheTime = 0;
     // Layer 2: homework per course (keyed by courseId)
     let homeworkCache = {};
+    // Course selection: null = all, string[] = selected courseIds
+    let selectedCourseIds = null;
 
     function loadCacheFromStorage() {
         try {
@@ -327,6 +301,13 @@
                 if (parsed && typeof parsed === "object") homeworkCache = parsed;
             }
         } catch (e) { console.warn("[ChaoxingHW] Failed to load homework cache:", e); }
+        try {
+            const s = GM_getValue("cxhw_selected_courses", null);
+            if (s) {
+                const parsed = JSON.parse(s);
+                if (Array.isArray(parsed) && parsed.length > 0) selectedCourseIds = parsed;
+            }
+        } catch (e) {}
     }
 
     function saveCacheToStorage() {
@@ -341,6 +322,7 @@
                 }
             }
             GM_setValue("cxhw_homework", JSON.stringify(homeworkCache));
+            GM_setValue("cxhw_selected_courses", selectedCourseIds ? JSON.stringify(selectedCourseIds) : null);
         } catch (e) { console.warn("[ChaoxingHW] Failed to save cache:", e); }
     }
 
@@ -354,6 +336,149 @@
                 hwPending: !cached
             });
         });
+    }
+
+    function buildFilteredCachedData() {
+        const all = buildCachedData();
+        if (!all || !selectedCourseIds) return all;
+        const idSet = new Set(selectedCourseIds);
+        return all.filter(c => idSet.has(String(c.courseId)));
+    }
+
+    // ===== Course Selection =====
+    function applyCourseSelection(courses) {
+        if (!selectedCourseIds) return courses;
+        const idSet = new Set(selectedCourseIds);
+        return courses.filter(c => idSet.has(String(c.courseId)));
+    }
+
+    function showCourseSelector(courses) {
+        return new Promise(resolve => {
+            const panel = document.getElementById("cxhw-panel");
+            const overlay = document.getElementById("cxhw-overlay");
+            const savedSet = selectedCourseIds ? new Set(selectedCourseIds) : null;
+            let checked = new Set(savedSet ? courses.filter(c => savedSet.has(String(c.courseId))).map(c => String(c.courseId)) : courses.map(c => String(c.courseId)));
+
+            // Create dedicated selector modal (outside panel, with own scrolling)
+            let modal = document.getElementById("cxhw-sel-modal");
+            if (!modal) {
+                modal = document.createElement("div");
+                modal.id = "cxhw-sel-modal";
+                modal.style.cssText = "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:720px;max-height:85vh;background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);z-index:1000000;display:none;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif";
+                document.body.appendChild(modal);
+            }
+
+            function renderSelector() {
+                const search = document.getElementById("cxhw-sel-search");
+                const q = search ? search.value.trim().toLowerCase() : "";
+                let html = '<div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;padding:16px 24px;display:flex;justify-content:space-between;align-items:center">';
+                html += '<span style="font-size:16px;font-weight:600">选择要追踪的课程</span>';
+                html += '<button id="cxhw-sel-x" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:15px">&times;</button>';
+                html += '</div>';
+                html += '<div style="padding:8px 24px;background:#fff5f5;border-bottom:1px solid #fecaca">';
+                html += '<span style="color:#dc3545;font-size:12px">&#9888; 只建议勾选需要的课程，全选或课程量过大可能导致平台风控，建议追踪课程不超过12个</span>';
+                html += '</div>';
+                html += '<div style="padding:10px 24px;background:#f8f9fa;border-bottom:1px solid #e9ecef;display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
+                html += '<button class="cxhw-fb" id="cxhw-sel-all">全选</button>';
+                html += '<button class="cxhw-fb" id="cxhw-sel-none">全不选</button>';
+                html += '<button class="cxhw-fb" id="cxhw-sel-active">仅已开课</button>';
+                html += '<input id="cxhw-sel-search" type="text" placeholder="搜索课程名/教师" value="' + escAttr(q) + '" style="margin-left:auto;padding:4px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;width:180px">';
+                html += '</div>';
+                html += '<div style="overflow-y:auto;max-height:calc(85vh - 200px);padding:4px 0">';
+                let visibleCount = 0;
+                courses.forEach(c => {
+                    const id = String(c.courseId);
+                    const name = (c.name || "").toLowerCase();
+                    const teacher = (c.teacher || "").toLowerCase();
+                    if (q && !name.includes(q) && !teacher.includes(q)) return;
+                    visibleCount++;
+                    const isActive = isCourseActive(c);
+                    const statusStr = !isActive ? '<span style="color:#6c757d;font-size:11px;margin-left:8px">已结课</span>' : '';
+                    const newBadge = savedSet && !savedSet.has(id) ? '<span style="background:#667eea;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:8px">新</span>' : '';
+                    html += '<label style="display:flex;align-items:center;padding:6px 24px;cursor:pointer;gap:10px;border-bottom:1px solid #f8f9fa" class="cxhw-sel-row">';
+                    html += '<div class="cxhw-cb' + (checked.has(id) ? ' checked' : '') + '" data-cid="' + id + '"></div>';
+                    html += '<span style="font-size:13px;font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escText(c.name) + '</span>';
+                    html += '<span style="font-size:12px;color:#6c757d;min-width:60px">' + escText(c.teacher || '') + '</span>';
+                    html += statusStr + newBadge;
+                    html += '</label>';
+                });
+                if (!visibleCount) html += '<div style="padding:24px;text-align:center;color:#6c757d">无匹配课程</div>';
+                html += '</div>';
+                // Fixed footer with confirm button
+                html += '<div style="padding:14px 24px;background:#f8f9fa;border-top:1px solid #e9ecef;display:flex;justify-content:space-between;align-items:center">';
+                html += '<span style="font-size:13px;color:#6c757d">已选 <b id="cxhw-sel-count" style="color:#667eea">' + checked.size + '</b>/' + courses.length + ' 个课程</span>';
+                html += '<div style="display:flex;gap:10px">';
+                html += '<button class="cxhw-fb" id="cxhw-sel-cancel">取消</button>';
+                html += '<button class="cxhw-fb on" id="cxhw-sel-confirm">确认</button>';
+                html += '</div></div>';
+                modal.innerHTML = html;
+
+                // Event bindings
+                document.getElementById("cxhw-sel-all").onclick = () => { checked = new Set(courses.map(c => String(c.courseId))); renderSelector(); };
+                document.getElementById("cxhw-sel-none").onclick = () => { checked = new Set(); renderSelector(); };
+                document.getElementById("cxhw-sel-active").onclick = () => { checked = new Set(courses.filter(c => isCourseActive(c)).map(c => String(c.courseId))); renderSelector(); };
+                document.getElementById("cxhw-sel-search").oninput = () => renderSelector();
+                document.getElementById("cxhw-sel-x").onclick = () => {
+                    modal.style.display = "none";
+                    overlay.style.display = "none";
+                    resolve(false);
+                };
+                document.getElementById("cxhw-sel-cancel").onclick = () => {
+                    modal.style.display = "none";
+                    overlay.style.display = "none";
+                    resolve(false);
+                };
+                document.getElementById("cxhw-sel-confirm").onclick = () => {
+                    if (checked.size === 0) { alert("请至少选择一个课程"); return; }
+                    selectedCourseIds = checked.size === courses.length ? null : Array.from(checked);
+                    modal.style.display = "none";
+                    overlay.style.display = "none";
+                    resolve(true);
+                };
+                modal.querySelectorAll(".cxhw-cb[data-cid]").forEach(cb => {
+                    cb.onclick = (e) => {
+                        e.stopPropagation();
+                        const cid = cb.dataset.cid;
+                        if (checked.has(cid)) { checked.delete(cid); cb.classList.remove("checked"); }
+                        else { checked.add(cid); cb.classList.add("checked"); }
+                        document.getElementById("cxhw-sel-count").textContent = checked.size;
+                    };
+                });
+            }
+
+            // Show modal
+            modal.style.display = "block";
+            overlay.style.display = "block";
+            renderSelector();
+        });
+    }
+
+    // ===== Auto Refresh =====
+    let autoRefreshOnLoad = GM_getValue("cxhw_autoRefreshOnLoad", true);  // default ON
+    let autoRefreshInterval = GM_getValue("cxhw_autoRefreshInterval", 0);  // 0 = OFF, minutes
+    let autoRefreshTimer = null;
+
+    function startAutoRefreshTimer() {
+        if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+        if (autoRefreshInterval > 0) {
+            autoRefreshTimer = setInterval(() => {
+                if (!loading) doRefresh();
+            }, autoRefreshInterval * 60 * 1000);
+        }
+        updateAutoRefreshStatus();
+    }
+
+    function updateAutoRefreshStatus() {
+        const el = document.getElementById("cxhw-autorefresh-status");
+        if (!el) return;
+        if (autoRefreshInterval > 0) {
+            el.textContent = "自动刷新: 每" + autoRefreshInterval + "分钟";
+        } else if (autoRefreshOnLoad) {
+            el.textContent = "自动刷新: 页面加载时";
+        } else {
+            el.textContent = "";
+        }
     }
 
     // ===== UI =====
@@ -398,11 +523,12 @@
             '<div class="cxhw-tb">' +
                 '<button class="cxhw-fb on" data-f="all">全部</button>' +
                 '<button class="cxhw-fb" data-f="pending">未交</button>' +
-                '<button class="cxhw-fb" data-f="submitted">待批改</button>' +
+                '<button class="cxhw-fb" data-f="peerreview">待互评</button>' +
+                '<button class="cxhw-fb" data-f="submitted">待批阅</button>' +
                 '<button class="cxhw-fb" data-f="completed">已完成</button>' +
                 '<button class="cxhw-fb" id="cxhw-hidefin">&#9670; 隐藏已结课</button>' +
                 '<button class="cxhw-fb" id="cxhw-expand">展开/折叠</button>' +
-                '<button class="cxhw-fb" id="cxhw-safemode">&#9888; 安全模式</button>' +
+                '<button class="cxhw-fb" id="cxhw-coursesel">&#9776; 课程选择</button>' +
                 '<span class="cxhw-sts">共 <b id="cxhw-cnt">0</b> 项作业</span>' +
             '</div>' +
             '<div class="cxhw-cnt" id="cxhw-body">' +
@@ -411,11 +537,50 @@
             '<div class="cxhw-ft">' +
                 '<button class="cxhw-rf" id="cxhw-rfbtn">&#128260; 刷新数据</button>' +
                 '<span class="cxhw-cc" id="cxhw-cc"></span>' +
+                '<span id="cxhw-autorefresh-status" class="cxhw-cc" style="color:#28a745"></span>' +
+                '<div class="cxhw-autorefresh">' +
+                    '<label title="页面加载/刷新时自动获取最新数据"><input type="checkbox" id="cxhw-ar-onload"> 页面加载时刷新</label>' +
+                    '<label title="按固定时间间隔自动刷新"><input type="checkbox" id="cxhw-ar-interval-on"> 每</label>' +
+                    '<input type="number" id="cxhw-ar-interval" min="1" max="120" value="' + autoRefreshInterval + '" title="自动刷新间隔（分钟）"> 分钟' +
+                '</div>' +
             '</div>';
         document.body.appendChild(panel);
 
         document.getElementById("cxhw-xbtn").onclick = toggle;
         document.getElementById("cxhw-rfbtn").onclick = doRefresh;
+
+        // Auto-refresh controls
+        const arOnload = document.getElementById("cxhw-ar-onload");
+        const arIntervalOn = document.getElementById("cxhw-ar-interval-on");
+        const arInterval = document.getElementById("cxhw-ar-interval");
+        arOnload.checked = autoRefreshOnLoad;
+        arIntervalOn.checked = autoRefreshInterval > 0;
+        arInterval.value = autoRefreshInterval || 30;
+        arInterval.disabled = !arIntervalOn.checked;
+        updateAutoRefreshStatus();
+
+        arOnload.onchange = () => {
+            autoRefreshOnLoad = arOnload.checked;
+            GM_setValue("cxhw_autoRefreshOnLoad", autoRefreshOnLoad);
+            updateAutoRefreshStatus();
+        };
+        arIntervalOn.onchange = () => {
+            if (arIntervalOn.checked) {
+                autoRefreshInterval = parseInt(arInterval.value) || 30;
+            } else {
+                autoRefreshInterval = 0;
+            }
+            arInterval.disabled = !arIntervalOn.checked;
+            GM_setValue("cxhw_autoRefreshInterval", autoRefreshInterval);
+            startAutoRefreshTimer();
+        };
+        arInterval.onchange = () => {
+            const val = Math.max(1, Math.min(120, parseInt(arInterval.value) || 30));
+            arInterval.value = val;
+            autoRefreshInterval = val;
+            GM_setValue("cxhw_autoRefreshInterval", autoRefreshInterval);
+            if (arIntervalOn.checked) startAutoRefreshTimer();
+        };
 
         // Restore persisted filter state
         if (cfilter !== "all") {
@@ -426,7 +591,6 @@
         if (hideFinished) {
             document.getElementById("cxhw-hidefin").classList.add("on");
         }
-        if (rate.safeMode) document.getElementById("cxhw-safemode").classList.add("on");
 
         panel.querySelectorAll(".cxhw-fb[data-f]").forEach(b => {
             b.onclick = () => {
@@ -462,11 +626,15 @@
             });
         };
 
-        // Safe mode toggle
-        document.getElementById("cxhw-safemode").onclick = function() {
-            rate.safeMode = !rate.safeMode;
-            GM_setValue("cxhw_safeMode", rate.safeMode);
-            this.classList.toggle("on", rate.safeMode);
+        // Course selection button
+        document.getElementById("cxhw-coursesel").onclick = async () => {
+            if (!courseCache) return;
+            const confirmed = await showCourseSelector(courseCache);
+            if (confirmed) {
+                saveCacheToStorage();
+                cachedData = buildFilteredCachedData();
+                render();
+            }
         };
 
         // Event delegation for course headers and homework items
@@ -517,11 +685,13 @@
             let hw = c.homework;
             if (cfilter === "pending") hw = hw.filter(h => isPending(h.status));
             else if (cfilter === "submitted") hw = hw.filter(h => isSubmitted(h.status));
+            else if (cfilter === "peerreview") hw = hw.filter(h => isPeerReview(h.status));
             else if (cfilter === "completed") hw = hw.filter(h => isCompleted(h.status));
             if (!hw.length) return;
             count += hw.length;
             const pend = c.homework.filter(h => isPending(h.status)).length;
             const wait = c.homework.filter(h => isSubmitted(h.status)).length;
+            const peer = c.homework.filter(h => isPeerReview(h.status)).length;
             const done = c.homework.filter(h => isCompleted(h.status)).length;
             const courseUrl = safeUrl(buildCourseUrl(c));
             html += '<div class="cxhw-cs">';
@@ -529,12 +699,14 @@
             html += '<span class="cxhw-cn"><a href="' + courseUrl + '" target="_blank" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none;">' + escText(c.name) + '</a></span>';
             html += '<span class="cxhw-ci">';
             if (pend) html += '<span class="r">' + pend + ' 未交</span> ';
-            if (wait) html += wait + ' 待批改 ';
+            if (peer) html += '<span style="color:#6f42c1">' + peer + ' 待互评</span> ';
+            if (wait) html += '<span style="color:#856404">' + wait + ' 待批阅</span> ';
             html += '<span class="g">' + done + ' 完成</span> ';
             html += '<span class="cxhw-ar">&#9660;</span></span></div>';
             html += '<div class="cxhw-hl">';
             hw.forEach(h => {
                 const sc = isPending(h.status) ? "cxhw-ss-nj"
+                    : isPeerReview(h.status) ? "cxhw-ss-pr"
                     : isSubmitted(h.status) ? "cxhw-ss-dp"
                     : isCompleted(h.status) ? "cxhw-ss-ok" : "cxhw-ss-ot";
                 const hwUrl = h.url ? safeUrl(h.url) : "";
@@ -587,9 +759,21 @@
                 return;
             }
 
+            // Course selection: show selector on first load (no saved selection) or forced refresh
+            if (!selectedCourseIds && !GM_getValue("cxhw_selected_courses", null)) {
+                const confirmed = await showCourseSelector(courseCache);
+                if (!confirmed) {
+                    selectedCourseIds = null; // user cancelled = select all
+                }
+                saveCacheToStorage();
+            }
+
+            // Apply course selection
+            const selectedCourses = applyCourseSelection(courseCache);
+
             // Layer 2: determine which courses need homework fetch
             let skippedFinished = 0, skippedCached = 0;
-            const coursesToFetch = courseCache.filter(c => {
+            const coursesToFetch = selectedCourses.filter(c => {
                 if (hideFinished && !isCourseActive(c)) { skippedFinished++; return false; }
                 if (forceAll) return true;
                 const cached = homeworkCache[c.courseId];
@@ -604,21 +788,20 @@
             ].filter(Boolean).join("、");
 
             if (coursesToFetch.length > 0) {
-                const modeStr = rate.safeMode ? " [安全模式]" : "";
-                showLoading("正在加载 " + coursesToFetch.length + "/" + courseCache.length + " 个课程的作业数据..." +
-                    (skipMsg ? "（跳过 " + skipMsg + " 课程）" : "") + modeStr);
+                const selStr = selectedCourseIds ? "（已选 " + selectedCourses.length + "/" + courseCache.length + " 个课程）" : "";
+                showLoading("正在加载 " + coursesToFetch.length + " 个课程的作业数据..." + selStr +
+                    (skipMsg ? "（跳过 " + skipMsg + "）" : ""));
                 const results = await fetchAllHomework(coursesToFetch, (done, total) => {
-                    showLoading("已加载 " + done + "/" + total + " 个课程..." +
-                        (skipMsg ? "（跳过 " + skipMsg + " 课程）" : "") + modeStr);
+                    showLoading("已加载 " + done + "/" + total + " 个课程..." + selStr +
+                        (skipMsg ? "（跳过 " + skipMsg + "）" : ""));
                 });
                 for (const r of results) {
-                    if (!r) continue;
                     homeworkCache[r.courseId] = { homework: r.homework, error: r.error, time: Date.now() };
                 }
                 saveCacheToStorage();
             }
 
-            cachedData = buildCachedData();
+            cachedData = buildFilteredCachedData();
             render();
         } catch (e) {
             document.getElementById("cxhw-body").innerHTML =
@@ -645,14 +828,29 @@
         loadCacheFromStorage();
         createUI();
         try {
-            cachedData = buildCachedData();
+            cachedData = buildFilteredCachedData();
             render();
         } catch (e) {
             console.warn("[ChaoxingHW] Failed to build cached data:", e);
             courseCache = null;
             homeworkCache = {};
         }
-        const needsFetch = !isCourseCacheValid() || (courseCache && courseCache.some(c => {
+
+        // Start interval timer if configured
+        startAutoRefreshTimer();
+
+        // Auto-refresh on page load: only on refresh, not on new tab navigation
+        const isRefresh = !!sessionStorage.getItem("cxhw_loaded");
+        sessionStorage.setItem("cxhw_loaded", "1");
+
+        if (autoRefreshOnLoad && isRefresh) {
+            doRefresh();
+            return;
+        }
+
+        // Fallback: fetch if cache invalid or missing data
+        const checkCourses = applyCourseSelection(courseCache || []);
+        const needsFetch = !isCourseCacheValid() || (checkCourses && checkCourses.some(c => {
             if (hideFinished && !isCourseActive(c)) return false;
             return !homeworkCache[c.courseId];
         }));
