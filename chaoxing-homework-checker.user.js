@@ -345,6 +345,16 @@
         return all.filter(c => idSet.has(String(c.courseId)));
     }
 
+    // Clean stale selectedCourseIds against current courseCache
+    function cleanSelectedCourseIds() {
+        if (!selectedCourseIds || !courseCache) return;
+        const validIds = new Set(courseCache.map(c => String(c.courseId)));
+        const cleaned = selectedCourseIds.filter(id => validIds.has(id));
+        if (cleaned.length !== selectedCourseIds.length) {
+            selectedCourseIds = cleaned.length > 0 ? cleaned : null;
+        }
+    }
+
     // ===== Ignore Homework =====
     let ignoredHomework = {};
     let showIgnored = false;
@@ -387,6 +397,14 @@
     function applyCourseSelection(courses) {
         if (!selectedCourseIds) return courses;
         const idSet = new Set(selectedCourseIds);
+        const validIds = new Set(courses.map(c => String(c.courseId)));
+        // Remove stale IDs that no longer exist in course list
+        const staleIds = selectedCourseIds.filter(id => !validIds.has(id));
+        if (staleIds.length > 0) {
+            selectedCourseIds = selectedCourseIds.filter(id => validIds.has(id));
+            if (selectedCourseIds.length === 0) selectedCourseIds = null; // all gone = select all
+        }
+        if (!selectedCourseIds) return courses;
         return courses.filter(c => idSet.has(String(c.courseId)));
     }
 
@@ -832,6 +850,9 @@
                 return;
             }
 
+            // Clean stale selectedCourseIds against fresh course list
+            cleanSelectedCourseIds();
+
             // Course selection: show selector on first load (no saved selection) or forced refresh
             if (!selectedCourseIds && !GM_getValue("cxhw_selected_courses", null)) {
                 const confirmed = await showCourseSelector(courseCache);
@@ -895,6 +916,7 @@
     // ===== Init =====
     function init() {
         loadCacheFromStorage();
+        cleanSelectedCourseIds(); // clean stale IDs before first render
         createUI();
         try {
             cachedData = buildFilteredCachedData();
