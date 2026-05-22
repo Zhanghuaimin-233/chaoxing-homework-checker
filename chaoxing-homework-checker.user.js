@@ -396,15 +396,12 @@
     // ===== Course Selection =====
     function applyCourseSelection(courses) {
         if (!selectedCourseIds) return courses;
-        const idSet = new Set(selectedCourseIds);
         const validIds = new Set(courses.map(c => String(c.courseId)));
         // Remove stale IDs that no longer exist in course list
-        const staleIds = selectedCourseIds.filter(id => !validIds.has(id));
-        if (staleIds.length > 0) {
-            selectedCourseIds = selectedCourseIds.filter(id => validIds.has(id));
-            if (selectedCourseIds.length === 0) selectedCourseIds = null; // all gone = select all
-        }
-        if (!selectedCourseIds) return courses;
+        const cleaned = selectedCourseIds.filter(id => validIds.has(id));
+        if (cleaned.length === 0) { selectedCourseIds = null; return courses; }
+        if (cleaned.length < selectedCourseIds.length) selectedCourseIds = cleaned;
+        const idSet = new Set(selectedCourseIds);
         return courses.filter(c => idSet.has(String(c.courseId)));
     }
 
