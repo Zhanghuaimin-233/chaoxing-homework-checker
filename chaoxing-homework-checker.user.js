@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         学习通作业统一查看
 // @namespace    https://github.com/chaoxing-homework-checker
-// @version      2.0.0
+// @version      2.0.2
 // @description  检测学习通当前账号所有课程的作业情况并统一显示
 // @author       Assistant
 // @match        *://*.chaoxing.com/*
@@ -31,16 +31,37 @@
         .cxhw-hdr h2{margin:0;font-size:18px;font-weight:600}
         .cxhw-x{background:rgba(255,255,255,.2);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px}
         .cxhw-x:hover{background:rgba(255,255,255,.3)}
-        .cxhw-tb{padding:12px 24px;background:#f8f9fa;border-bottom:1px solid #e9ecef;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-        .cxhw-fb{padding:5px 14px;border:1px solid #dee2e6;border-radius:16px;background:#fff;cursor:pointer;font-size:13px}
-        .cxhw-fb.on{background:#667eea;color:#fff;border-color:#667eea}
-        .cxhw-fb:hover:not(.on){border-color:#667eea;color:#667eea}
-        #cxhw-showignored{border-style:dashed;font-size:12px;padding:4px 10px}
-        #cxhw-showignored.on{background:#6c757d;border-color:#6c757d}
-        #cxhw-expand{border-style:dashed;font-size:12px;padding:4px 10px}
-        .cxhw-sts{margin-left:auto;font-size:13px;color:#6c757d}
-        .cxhw-sts b{color:#667eea}
-        .cxhw-cnt{overflow-y:auto;max-height:calc(85vh - 200px)}
+        .cxhw-tb{background:#fff;border-bottom:1px solid #edf0f5}
+        .cxhw-tb-main{padding:14px 24px 11px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+        .cxhw-seg{display:inline-flex;align-items:center;gap:3px;padding:3px;background:#f1f3f8;border-radius:12px}
+        .cxhw-filter{height:34px;padding:0 12px;border:none;border-radius:9px;background:transparent;color:#606a7b;cursor:pointer;font-size:13px;display:inline-flex;align-items:center;gap:7px;transition:background .15s,color .15s,box-shadow .15s}
+        .cxhw-filter:hover:not(.on){background:#e6eaf3;color:#3c4555}
+        .cxhw-filter.on{background:#fff;color:#5e69df;font-weight:600;box-shadow:0 1px 4px rgba(30,38,58,.10)}
+        .cxhw-filter-count{min-width:19px;height:19px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;border-radius:10px;background:#e6eaf2;color:#6d7685;font-size:11px;font-weight:500}
+        .cxhw-filter.on .cxhw-filter-count{background:#eef0ff;color:#5c67dd}
+        .cxhw-summary{margin-left:auto;height:36px;display:flex;align-items:center;gap:6px;padding:0 13px;border:1px solid #edf0f5;border-radius:18px;color:#718096;font-size:12px;background:#fbfcfe;white-space:nowrap}
+        .cxhw-summary strong{font-size:16px;color:#dc5262;line-height:1}
+        .cxhw-summary b{font-size:14px;color:#667eea}
+        .cxhw-summary-sep{width:1px;height:16px;background:#e4e8f0;margin:0 4px}
+        .cxhw-tb-actions{padding:0 24px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+        .cxhw-tools-label{font-size:11px;color:#97a0af;margin-right:2px;letter-spacing:.06em}
+        .cxhw-tool{height:32px;display:inline-flex;align-items:center;gap:6px;padding:0 11px;border:1px solid #e5e9f1;border-radius:10px;background:#fff;color:#5f6979;cursor:pointer;font-size:12px;font-weight:500;transition:background .15s,border-color .15s,color .15s,box-shadow .15s,transform .1s}
+        .cxhw-tool:hover{background:#f5f7fb;border-color:#d7ddea;color:#414a5a}
+        .cxhw-tool:active{transform:scale(.98)}
+        .cxhw-tool:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(102,126,234,.14)}
+        .cxhw-tool-primary{border-color:#e1e5ff;background:#f5f6ff;color:#5865dc}
+        .cxhw-tool-primary:hover{border-color:#ced4ff;background:#ecefff;color:#4c59cd}
+        .cxhw-tool-icon{font-size:13px;color:#9099a9;line-height:1}
+        .cxhw-tool-primary .cxhw-tool-icon{color:#6875e8}
+        .cxhw-tool-badge,.cxhw-course-count{height:18px;min-width:18px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;border-radius:9px;font-size:10px;font-weight:600;background:#eef1f6;color:#778091}
+        .cxhw-course-count{background:#e6e9ff;color:#5865dc}
+        #cxhw-showignored.on{background:#f4f5f8;border-color:#dce1ea;color:#404a5c}
+        #cxhw-showignored.on .cxhw-tool-icon{color:#667eea}
+        .cxhw-manage-hint{font-size:11px;color:#9aa3b3;margin-left:4px}
+        #cxhw-sel-modal .cxhw-fb{padding:5px 14px;border:1px solid #dee2e6;border-radius:16px;background:#fff;cursor:pointer;font-size:13px}
+        #cxhw-sel-modal .cxhw-fb.on{background:#667eea;color:#fff;border-color:#667eea}
+        #cxhw-sel-modal .cxhw-fb:hover:not(.on){border-color:#667eea;color:#667eea}
+        .cxhw-cnt{overflow-y:auto;max-height:calc(85vh - 240px)}
         .cxhw-cs{border-bottom:1px solid #e9ecef}
         .cxhw-cs:last-child{border-bottom:none}
         .cxhw-ch{padding:14px 24px;background:#f8f9fa;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
@@ -50,11 +71,12 @@
         .cxhw-ci{font-size:12px;color:#6c757d}
         .cxhw-ci .r{color:#dc3545;font-weight:600}
         .cxhw-ci .g{color:#28a745}
-        .cxhw-ar{transition:transform .2s;color:#6c757d}
-        .cxhw-ch.open .cxhw-ar{transform:rotate(180deg)}
+        .cxhw-ar{display:inline-block;width:0;height:0;margin-left:8px;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:6px solid #8a93a4;vertical-align:middle;transform:rotate(0deg);transform-origin:45% 50%;transition:transform .18s ease,border-left-color .15s}
+        .cxhw-ch:hover .cxhw-ar{border-left-color:#667eea}
+        .cxhw-ch.open .cxhw-ar{transform:rotate(90deg)}
         .cxhw-hl{display:none}
         .cxhw-ch.open+.cxhw-hl{display:block}
-        .cxhw-hi{padding:12px 24px 12px 48px;border-bottom:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center}
+        .cxhw-hi{padding:12px 24px 12px 48px;border-bottom:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;gap:16px}
         .cxhw-hi:last-child{border-bottom:none}
         .cxhw-hi[data-url]{cursor:pointer}
         .cxhw-hi[data-url]:hover{background:#f0f4ff}
@@ -66,6 +88,20 @@
         .cxhw-ss-pr{background:#e8daef;color:#6f42c1}
         .cxhw-ss-ok{background:#d4edda;color:#155724}
         .cxhw-ss-ot{background:#e2e3e5;color:#383d41}
+        .cxhw-hi.is-ignored{background:#fbfcfe}
+        .cxhw-hi.is-ignored .cxhw-ht,.cxhw-hi.is-ignored .cxhw-hd{color:#8b93a3}
+        .cxhw-ignored-mark{display:inline-flex;align-items:center;margin-left:7px;padding:1px 7px;border-radius:10px;background:#eef1f6;color:#778091;font-size:10px;font-weight:500;vertical-align:1px}
+        .cxhw-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+        .cxhw-ignore-btn{height:27px;display:inline-flex;align-items:center;gap:5px;padding:0 10px;border:1px solid transparent;border-radius:14px;background:#f3f5f9;color:#677181;cursor:pointer;font-size:11px;font-weight:500;white-space:nowrap;transition:background .15s,border-color .15s,color .15s,box-shadow .15s,transform .1s}
+        .cxhw-ignore-btn .cxhw-ignore-icon{font-size:13px;line-height:1;color:#97a0af;transition:color .15s}
+        .cxhw-ignore-btn:hover{background:#fff1f2;border-color:#fecdd3;color:#d7354d}
+        .cxhw-ignore-btn:hover .cxhw-ignore-icon{color:#e05263}
+        .cxhw-ignore-btn:active{transform:scale(.97)}
+        .cxhw-ignore-btn:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(220,53,69,.14)}
+        .cxhw-ignore-btn.restore{background:#ecf9f0;border-color:#d1efdb;color:#218548}
+        .cxhw-ignore-btn.restore .cxhw-ignore-icon{color:#39a562}
+        .cxhw-ignore-btn.restore:hover{background:#dff5e7;border-color:#a9ddbb;color:#166c37}
+        .cxhw-ignore-btn.restore:focus-visible{box-shadow:0 0 0 3px rgba(40,167,69,.15)}
         .cxhw-ld{padding:60px 24px;text-align:center}
         .cxhw-sp{width:36px;height:36px;border:3px solid #e9ecef;border-top-color:#667eea;border-radius:50%;animation:cxhw-ani 1s linear infinite;margin:0 auto 12px}
         @keyframes cxhw-ani{to{transform:rotate(360deg)}}
@@ -545,6 +581,8 @@
 
     // ===== UI =====
     let panel, overlay, cachedData = null, loading = false;
+    // Tracks open course sections so re-rendering keeps expand/collapse state stable.
+    const expandedCourseIds = new Set();
 
     // Persist filter state
     let cfilter = GM_getValue("cxhw_cfilter", "all");
@@ -583,15 +621,23 @@
                 '<button class="cxhw-x" id="cxhw-xbtn" aria-label="关闭">&times;</button>' +
             '</div>' +
             '<div class="cxhw-tb">' +
-                '<button class="cxhw-fb on" data-f="all">全部</button>' +
-                '<button class="cxhw-fb" data-f="pending">未交</button>' +
-                '<button class="cxhw-fb" data-f="peerreview">待互评</button>' +
-                '<button class="cxhw-fb" data-f="submitted">待批阅</button>' +
-                '<button class="cxhw-fb" data-f="completed">已完成</button>' +
-                '<button class="cxhw-fb" id="cxhw-showignored">&#8634; 显示已忽略</button>' +
-                '<button class="cxhw-fb" id="cxhw-expand">展开/折叠</button>' +
-                '<button class="cxhw-fb" id="cxhw-coursesel">&#9776; 课程选择</button>' +
-                '<span class="cxhw-sts">共 <b id="cxhw-cnt">0</b> 项作业</span>' +
+                '<div class="cxhw-tb-main">' +
+                    '<div class="cxhw-seg" role="tablist" aria-label="作业状态筛选">' +
+                        '<button class="cxhw-filter on" data-f="all" role="tab"><span>全部</span><span class="cxhw-filter-count" data-count="all">0</span></button>' +
+                        '<button class="cxhw-filter" data-f="pending" role="tab"><span>未交</span><span class="cxhw-filter-count" data-count="pending">0</span></button>' +
+                        '<button class="cxhw-filter" data-f="peerreview" role="tab"><span>待互评</span><span class="cxhw-filter-count" data-count="peerreview">0</span></button>' +
+                        '<button class="cxhw-filter" data-f="submitted" role="tab"><span>待批阅</span><span class="cxhw-filter-count" data-count="submitted">0</span></button>' +
+                        '<button class="cxhw-filter" data-f="completed" role="tab"><span>已完成</span><span class="cxhw-filter-count" data-count="completed">0</span></button>' +
+                    '</div>' +
+                    '<div class="cxhw-summary"><span>未交</span><strong id="cxhw-pending-total">0</strong><span>项</span><span class="cxhw-summary-sep"></span><span>当前有效项</span><b id="cxhw-count">0</b></div>' +
+                '</div>' +
+                '<div class="cxhw-tb-actions">' +
+                    '<span class="cxhw-tools-label">管理</span>' +
+                    '<button class="cxhw-tool cxhw-tool-primary" id="cxhw-coursesel"><span class="cxhw-tool-icon">&#9776;</span><span>选择课程</span><span class="cxhw-course-count" id="cxhw-selected-count">0</span></button>' +
+                    '<button class="cxhw-tool" id="cxhw-showignored"><span class="cxhw-tool-icon">&#8856;</span><span id="cxhw-ignore-label">显示已忽略</span><span class="cxhw-tool-badge" id="cxhw-ignored-count">0</span></button>' +
+                    '<button class="cxhw-tool" id="cxhw-expand"><span class="cxhw-tool-icon" id="cxhw-expand-icon">&#9662;</span><span id="cxhw-expand-label">展开全部</span></button>' +
+                    '<span class="cxhw-manage-hint">只展示已选择课程中的作业</span>' +
+                '</div>' +
             '</div>' +
             '<div class="cxhw-cnt" id="cxhw-body">' +
                 '<div class="cxhw-em">点击刷新按钮加载数据</div>' +
@@ -646,18 +692,18 @@
 
         // Restore persisted filter state
         if (cfilter !== "all") {
-            panel.querySelectorAll(".cxhw-fb[data-f]").forEach(b => {
+            panel.querySelectorAll(".cxhw-filter[data-f]").forEach(b => {
                 b.classList.toggle("on", b.getAttribute("data-f") === cfilter);
             });
         }
 
         loadIgnoredHomework();
 
-        panel.querySelectorAll(".cxhw-fb[data-f]").forEach(b => {
+        panel.querySelectorAll(".cxhw-filter[data-f]").forEach(b => {
             b.onclick = () => {
                 cfilter = b.getAttribute("data-f");
                 GM_setValue("cxhw_cfilter", cfilter);
-                panel.querySelectorAll(".cxhw-fb[data-f]").forEach(x => x.classList.remove("on"));
+                panel.querySelectorAll(".cxhw-filter[data-f]").forEach(x => x.classList.remove("on"));
                 b.classList.add("on");
                 render();
             };
@@ -670,13 +716,17 @@
             render();
         };
 
-        // P3: expand/collapse all
-        let allExpanded = false;
+        // Expand/collapse all courses currently visible in the list.
         document.getElementById("cxhw-expand").onclick = () => {
-            allExpanded = !allExpanded;
-            document.querySelectorAll(".cxhw-ch").forEach(ch => {
-                ch.classList.toggle("open", allExpanded);
+            const headers = Array.from(panel.querySelectorAll("#cxhw-body .cxhw-ch"));
+            const shouldExpand = headers.some(ch => !ch.classList.contains("open"));
+            headers.forEach(ch => {
+                const cid = String(ch.dataset.cid);
+                if (shouldExpand) expandedCourseIds.add(cid);
+                else expandedCourseIds.delete(cid);
+                ch.classList.toggle("open", shouldExpand);
             });
+            updateToolbarState();
         };
 
         // Course selection button
@@ -716,7 +766,11 @@
             // Course header toggle
             const ch = e.target.closest(".cxhw-ch");
             if (ch && !e.target.closest("a")) {
+                const cid = String(ch.dataset.cid);
+                if (expandedCourseIds.has(cid)) expandedCourseIds.delete(cid);
+                else expandedCourseIds.add(cid);
                 ch.classList.toggle("open");
+                updateToolbarState();
                 return;
             }
             // Homework item click
@@ -746,6 +800,46 @@
             (msg || "正在加载作业数据...") + '</div></div>';
     }
 
+    function updateToolbarState() {
+        if (!panel) return;
+        const effectiveHomework = [];
+        const ignoredHomeworkItems = [];
+        (cachedData || []).forEach(c => {
+            if (c.hwPending || c.error || !Array.isArray(c.homework)) return;
+            c.homework.forEach(h => {
+                if (isIgnored(c.courseId, h)) ignoredHomeworkItems.push(h);
+                else effectiveHomework.push(h);
+            });
+        });
+        const counts = {
+            all: effectiveHomework.length,
+            pending: effectiveHomework.filter(h => isPending(h.status)).length,
+            peerreview: effectiveHomework.filter(h => isPeerReview(h.status)).length,
+            submitted: effectiveHomework.filter(h => isSubmitted(h.status)).length,
+            completed: effectiveHomework.filter(h => isCompleted(h.status)).length
+        };
+        Object.keys(counts).forEach(name => {
+            const el = panel.querySelector('[data-count="' + name + '"]');
+            if (el) el.textContent = counts[name];
+        });
+        const pendingEl = document.getElementById("cxhw-pending-total");
+        if (pendingEl) pendingEl.textContent = counts.pending;
+        const selectedEl = document.getElementById("cxhw-selected-count");
+        if (selectedEl) selectedEl.textContent = cachedData ? cachedData.length : 0;
+        const ignoredEl = document.getElementById("cxhw-ignored-count");
+        if (ignoredEl) ignoredEl.textContent = ignoredHomeworkItems.length;
+        const ignoredLabel = document.getElementById("cxhw-ignore-label");
+        if (ignoredLabel) ignoredLabel.textContent = showIgnored ? "隐藏已忽略" : "显示已忽略";
+        const ignoredBtn = document.getElementById("cxhw-showignored");
+        if (ignoredBtn) ignoredBtn.classList.toggle("on", showIgnored);
+        const headers = Array.from(panel.querySelectorAll("#cxhw-body .cxhw-ch"));
+        const allOpen = headers.length > 0 && headers.every(ch => ch.classList.contains("open"));
+        const expandLabel = document.getElementById("cxhw-expand-label");
+        const expandIcon = document.getElementById("cxhw-expand-icon");
+        if (expandLabel) expandLabel.textContent = allOpen ? "折叠全部" : "展开全部";
+        if (expandIcon) expandIcon.innerHTML = allOpen ? "&#9652;" : "&#9662;";
+    }
+
     function render() {
         if (!cachedData) return;
         let html = "";
@@ -772,14 +866,14 @@
             const done = c.homework.filter(h => isCompleted(h.status)).length;
             const courseUrl = safeUrl(buildCourseUrl(c));
             html += '<div class="cxhw-cs">';
-            html += '<div class="cxhw-ch">';
+            html += '<div class="cxhw-ch' + (expandedCourseIds.has(String(c.courseId)) ? ' open' : '') + '" data-cid="' + escAttr(String(c.courseId)) + '">';
             html += '<span class="cxhw-cn"><a href="' + courseUrl + '" target="_blank" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none;">' + escText(c.name) + '</a></span>';
             html += '<span class="cxhw-ci">';
             if (pend) html += '<span class="r">' + pend + ' 未交</span> ';
             if (peer) html += '<span style="color:#6f42c1">' + peer + ' 待互评</span> ';
             if (wait) html += '<span style="color:#856404">' + wait + ' 待批阅</span> ';
             html += '<span class="g">' + done + ' 完成</span> ';
-            html += '<span class="cxhw-ar">&#9660;</span></span></div>';
+            html += '<span class="cxhw-ar" aria-hidden="true"></span></span></div>';
             html += '<div class="cxhw-hl">';
             hwVisible.forEach(h => {
                 const ignored = isIgnored(c.courseId, h);
@@ -788,18 +882,17 @@
                     : isSubmitted(h.status) ? "cxhw-ss-dp"
                     : isCompleted(h.status) ? "cxhw-ss-ok" : "cxhw-ss-ot";
                 const hwUrl = h.url ? safeUrl(h.url) : "";
-                const mutedStyle = ignored ? 'opacity:0.45;' : '';
-                html += '<div class="cxhw-hi"' + (hwUrl ? ' data-url="' + escAttr(hwUrl) + '"' : '') + ' style="' + mutedStyle + '">';
+                html += '<div class="cxhw-hi' + (ignored ? ' is-ignored' : '') + '"' + (hwUrl ? ' data-url="' + escAttr(hwUrl) + '"' : '') + '>';
                 html += '<div style="flex:1;min-width:0">';
-                html += '<div class="cxhw-ht">' + escText(h.title) + (ignored ? ' <span style="font-size:11px;color:#999">[已忽略]</span>' : '') + '</div>';
+                html += '<div class="cxhw-ht">' + escText(h.title) + (ignored ? ' <span class="cxhw-ignored-mark">已忽略</span>' : '') + '</div>';
                 if (h.deadline) html += '<div class="cxhw-hd">&#9200; ' + escText(h.deadline) + '</div>';
                 html += '</div>';
-                html += '<div style="display:flex;align-items:center;gap:8px">';
+                html += '<div class="cxhw-actions">';
                 html += '<span class="cxhw-ss ' + sc + '">' + escText(h.status) + '</span>';
                 if (ignored) {
-                    html += '<button class="cxhw-ignore-btn" data-action="unignore" data-cid="' + c.courseId + '" data-key="' + escAttr(getHomeworkKey(c.courseId, h)) + '" style="font-size:11px;padding:2px 8px;border:1px solid #adb5bd;border-radius:10px;background:#fff;cursor:pointer;color:#28a745">恢复</button>';
+                    html += '<button class="cxhw-ignore-btn restore" data-action="unignore" data-cid="' + c.courseId + '" data-key="' + escAttr(getHomeworkKey(c.courseId, h)) + '" title="恢复显示该作业" aria-label="恢复显示：' + escAttr(h.title) + '"><span class="cxhw-ignore-icon" aria-hidden="true">&#8634;</span><span>恢复</span></button>';
                 } else {
-                    html += '<button class="cxhw-ignore-btn" data-action="ignore" data-cid="' + c.courseId + '" data-cname="' + escAttr(c.name) + '" data-key="' + escAttr(getHomeworkKey(c.courseId, h)) + '" data-title="' + escAttr(h.title) + '" data-url="' + escAttr(h.url || '') + '" style="font-size:11px;padding:2px 8px;border:1px solid #dee2e6;border-radius:10px;background:#fff;cursor:pointer;color:#dc3545;opacity:0;transition:opacity .15s" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0">忽略</button>';
+                    html += '<button class="cxhw-ignore-btn" data-action="ignore" data-cid="' + c.courseId + '" data-cname="' + escAttr(c.name) + '" data-key="' + escAttr(getHomeworkKey(c.courseId, h)) + '" data-title="' + escAttr(h.title) + '" data-url="' + escAttr(h.url || '') + '" title="隐藏此作业，不计入当前待办" aria-label="忽略：' + escAttr(h.title) + '"><span class="cxhw-ignore-icon" aria-hidden="true">&#8856;</span><span>忽略</span></button>';
                 }
                 html += '</div></div>';
             });
@@ -819,7 +912,8 @@
                 pendingCount + ' 个课程的作业数据尚未加载，点击刷新按钮获取</div>' + html;
         }
         document.getElementById("cxhw-body").innerHTML = html;
-        document.getElementById("cxhw-cnt").textContent = count;
+        document.getElementById("cxhw-count").textContent = count;
+        updateToolbarState();
         updateCacheInfo();
     }
 
