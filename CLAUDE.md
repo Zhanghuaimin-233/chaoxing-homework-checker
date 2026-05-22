@@ -1,13 +1,26 @@
-# 学习通作业统一查看器 — 项目文档
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## 项目概述
 
 Tampermonkey 用户脚本，自动获取学习通（chaoxing.com）所有课程的作业状态，统一展示在悬浮面板中。
 
 - **仓库**: `E:\Dev\Projects\chaoxing-homework-checker`
-- **主文件**: `chaoxing-homework-checker.user.js`（~965行）
+- **主文件**: `chaoxing-homework-checker.user.js`（965行）
 - **开发工具**: Claude Code + Codex (GPT-5.5) 协作
 - **GitHub**: https://github.com/Zhanghuaimin-233/chaoxing-homework-checker
+
+---
+
+## 开发环境
+
+这是一个无构建工具的 Tampermonkey 用户脚本项目，所有代码都在单个 `.user.js` 文件中。
+
+- **无构建/编译步骤** — 直接编辑 `chaoxing-homework-checker.user.js`，在 Tampermonkey 中粘贴即可测试
+- **无测试框架** — 通过实际运行在 chaoxing.com 上验证功能
+- **无 linter** — 代码风格保持一致即可（2空格缩进，单引号字符串）
+- **安装测试**：在 Tampermonkey 中创建新脚本 → 粘贴全部内容 → Ctrl+S → 访问 chaoxing.com
 
 ---
 
@@ -200,3 +213,54 @@ Windows Store 版 PowerShell 路径 `C:\Program Files\WindowsApps\...` 被安全
 4. 缓存一致性（两层缓存同步、过期清理）
 5. 繁简体匹配覆盖
 6. 边界情况（空数组、过期ID、缓存损坏）
+
+1. Think Before Coding
+Don't assume. Don't hide confusion. Surface tradeoffs.
+
+Before implementing:
+
+State your assumptions explicitly. If uncertain, ask.
+If multiple interpretations exist, present them - don't pick silently.
+If a simpler approach exists, say so. Push back when warranted.
+If something is unclear, stop. Name what's confusing. Ask.
+2. Simplicity First
+Minimum code that solves the problem. Nothing speculative.
+
+No features beyond what was asked.
+No abstractions for single-use code.
+No "flexibility" or "configurability" that wasn't requested.
+No error handling for impossible scenarios.
+If you write 200 lines and it could be 50, rewrite it.
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+3. Surgical Changes
+Touch only what you must. Clean up only your own mess.
+
+When editing existing code:
+
+Don't "improve" adjacent code, comments, or formatting.
+Don't refactor things that aren't broken.
+Match existing style, even if you'd do it differently.
+If you notice unrelated dead code, mention it - don't delete it.
+When your changes create orphans:
+
+Remove imports/variables/functions that YOUR changes made unused.
+Don't remove pre-existing dead code unless asked.
+The test: Every changed line should trace directly to the user's request.
+
+4. Goal-Driven Execution
+Define success criteria. Loop until verified.
+
+Transform tasks into verifiable goals:
+
+"Add validation" → "Write tests for invalid inputs, then make them pass"
+"Fix the bug" → "Write a test that reproduces it, then make it pass"
+"Refactor X" → "Ensure tests pass before and after"
+For multi-step tasks, state a brief plan:
+
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+These guidelines are working if: fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, 和 clarifying questions come before implementation rather than after mistakes.
