@@ -2,6 +2,9 @@
 
 篡改猴(Tampermonkey)用户脚本，一键检测学习通所有课程作业状态，统一展示在悬浮面板中。
 
+![alt text](assets/image1.png)
+![alt text](assets/image2.png)
+
 **当前版本**: 2.1.0
 
 ## 功能特性
@@ -98,11 +101,17 @@
 - 已结课课程的判断基于 `isretire` 字段和 `endDate`，可能有误判
 - 平台使用繁简混合中文状态文本，使用正则模糊匹配
 
+## 许可证
+
+本项目基于 [GNU General Public License v3.0](LICENSE.txt) 开源。
+
 ## 文件结构
 
 ```
 chaoxing-homework-checker/
 ├── chaoxing-homework-checker.user.js   # 篡改猴脚本主文件
+├── greasyfork-description.md           # Greasy Fork 发行说明
+├── LICENSE.txt                         # GPL-3.0 许可证
 └── README.md
 ```
 

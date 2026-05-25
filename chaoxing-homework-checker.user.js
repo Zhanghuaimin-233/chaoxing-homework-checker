@@ -5,6 +5,7 @@
 // @description  检测学习通当前账号所有课程的作业情况并统一显示
 // @author       Assistant
 // @match        *://*.chaoxing.com/*
+// @license      GPL-3.0
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
 // @grant        GM_setValue
