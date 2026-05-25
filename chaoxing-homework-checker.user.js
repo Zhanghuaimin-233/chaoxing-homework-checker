@@ -107,11 +107,16 @@
         @keyframes cxhw-ani{to{transform:rotate(360deg)}}
         .cxhw-em{padding:48px 24px;text-align:center;color:#6c757d;font-size:14px}
         .cxhw-er{padding:16px 24px;background:#f8d7da;color:#721c24;margin:12px 24px;border-radius:6px;font-size:13px}
-        .cxhw-ft{padding:14px 24px;background:#f8f9fa;border-top:1px solid #e9ecef;display:flex;justify-content:space-between;align-items:center}
+        .cxhw-ft{padding:14px 24px;background:#f8f9fa;border-top:1px solid #e9ecef;display:flex;justify-content:space-between;align-items:center;gap:14px}
+        .cxhw-ft-left,.cxhw-ft-center,.cxhw-ft-right{display:flex;align-items:center;gap:8px}
+        .cxhw-ft-center{justify-content:center}
+        .cxhw-ft-right{justify-content:flex-end}
         .cxhw-rf{padding:7px 18px;background:#667eea;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px}
         .cxhw-rf:hover{background:#5a6fd6}
-        .cxhw-cc{font-size:11px;color:#6c757d}
-        .cxhw-autorefresh{display:flex;align-items:center;gap:8px;margin-left:auto}
+        .cxhw-status-pill{height:24px;display:inline-flex;align-items:center;padding:0 10px;border:1px solid #e9ecef;border-radius:12px;background:#f8f9fa;color:#6c757d;font-size:11px;white-space:nowrap}
+        .cxhw-status-pill:empty{display:none}
+        .cxhw-status-ok{color:#28a745;border-color:#d8eddc;background:#f6fbf7}
+        .cxhw-autorefresh{display:flex;align-items:center;gap:8px}
         .cxhw-autorefresh label{font-size:12px;color:#6c757d;display:flex;align-items:center;gap:4px;cursor:pointer}
         .cxhw-autorefresh input[type=number]{width:50px;padding:2px 6px;border:1px solid #dee2e6;border-radius:4px;font-size:12px;text-align:center}
         .cxhw-autorefresh input[type=checkbox]{width:14px;height:14px;cursor:pointer}
@@ -591,15 +596,12 @@
     }
 
     function updateAutoRefreshStatus() {
-        const el = document.getElementById("cxhw-autorefresh-status");
+        const el = document.getElementById('cxhw-autorefresh-status');
         if (!el) return;
-        if (autoRefreshInterval > 0) {
-            el.textContent = "自动刷新: 每" + autoRefreshInterval + "分钟";
-        } else if (autoRefreshOnLoad) {
-            el.textContent = "自动刷新: 页面加载时";
-        } else {
-            el.textContent = "";
-        }
+        const parts = [];
+        if (autoRefreshOnLoad) parts.push('页面加载时刷新');
+        if (autoRefreshInterval > 0) parts.push('每' + autoRefreshInterval + '分钟');
+        el.textContent = parts.join(' · ');
     }
 
     // ===== UI =====
@@ -666,13 +668,19 @@
                 '<div class="cxhw-em">点击刷新按钮加载数据</div>' +
             '</div>' +
             '<div class="cxhw-ft">' +
-                '<button class="cxhw-rf" id="cxhw-rfbtn">&#128260; 刷新数据</button>' +
-                '<span class="cxhw-cc" id="cxhw-cc"></span>' +
-                '<span id="cxhw-autorefresh-status" class="cxhw-cc" style="color:#28a745"></span>' +
-                '<div class="cxhw-autorefresh">' +
-                    '<label title="页面加载/刷新时自动获取最新数据"><input type="checkbox" id="cxhw-ar-onload"> 页面加载时刷新</label>' +
-                    '<label title="按固定时间间隔自动刷新"><input type="checkbox" id="cxhw-ar-interval-on"> 每</label>' +
-                    '<input type="number" id="cxhw-ar-interval" min="1" max="120" value="' + autoRefreshInterval + '" title="自动刷新间隔（分钟）"> 分钟' +
+                '<div class="cxhw-ft-left">' +
+                    '<button class="cxhw-rf" id="cxhw-rfbtn">&#128260; 刷新数据</button>' +
+                '</div>' +
+                '<div class="cxhw-ft-center cxhw-seg" aria-label="状态信息">' +
+                    '<span class="cxhw-status-pill" id="cxhw-cc"></span>' +
+                    '<span class="cxhw-status-pill cxhw-status-ok" id="cxhw-autorefresh-status"></span>' +
+                '</div>' +
+                '<div class="cxhw-ft-right">' +
+                    '<div class="cxhw-autorefresh cxhw-seg" aria-label="自动刷新设置">' +
+                        '<label title="页面加载/刷新时自动获取最新数据"><input type="checkbox" id="cxhw-ar-onload"> 页面加载时刷新</label>' +
+                        '<label title="按固定时间间隔自动刷新"><input type="checkbox" id="cxhw-ar-interval-on"> 每</label>' +
+                        '<input type="number" id="cxhw-ar-interval" min="1" max="120" value="' + autoRefreshInterval + '" title="自动刷新间隔（分钟）"> 分钟' +
+                    '</div>' +
                 '</div>' +
             '</div>';
         document.body.appendChild(panel);
@@ -1070,13 +1078,9 @@
             // In-tab navigation or new tab from platform — skip
         }
 
-        // Fallback: fetch if cache invalid or missing data
-        const checkCourses = applyCourseSelection(courseCache || []);
-        const needsFetch = !isCourseCacheValid() || (checkCourses && checkCourses.some(c => {
-            if (hideFinished && !isCourseActive(c)) return false;
-            return !homeworkCache[c.courseId];
-        }));
-        if (needsFetch) loadData();
+        // Only auto-fetch on first visit (no cache at all). Expired cache is
+        // displayed as-is; user must click refresh to update.
+        if (!courseCache) loadData();
     }
 
     if (document.readyState === "complete") init();
