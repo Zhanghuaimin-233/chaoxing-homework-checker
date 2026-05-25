@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         学习通作业统一查看
 // @namespace    https://github.com/chaoxing-homework-checker
-// @version      2.0.2
+// @version      2.1.0
 // @description  检测学习通当前账号所有课程的作业情况并统一显示
 // @author       Assistant
 // @match        *://*.chaoxing.com/*
@@ -71,9 +71,9 @@
         .cxhw-ci{font-size:12px;color:#6c757d}
         .cxhw-ci .r{color:#dc3545;font-weight:600}
         .cxhw-ci .g{color:#28a745}
-        .cxhw-ar{display:inline-block;width:0;height:0;margin-left:8px;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:6px solid #8a93a4;vertical-align:middle;transform:rotate(0deg);transform-origin:45% 50%;transition:transform .18s ease,border-left-color .15s}
+        .cxhw-ar{display:inline-block;width:0;height:0;margin-left:8px;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:6px solid #8a93a4;vertical-align:middle;transform:rotate(90deg);transform-origin:45% 50%;transition:transform .18s ease,border-left-color .15s}
         .cxhw-ch:hover .cxhw-ar{border-left-color:#667eea}
-        .cxhw-ch.open .cxhw-ar{transform:rotate(90deg)}
+        .cxhw-ch.open .cxhw-ar{transform:rotate(270deg)}
         .cxhw-hl{display:none}
         .cxhw-ch.open+.cxhw-hl{display:block}
         .cxhw-hi{padding:12px 24px 12px 48px;border-bottom:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;gap:16px}
@@ -457,9 +457,47 @@
                 document.body.appendChild(modal);
             }
 
+            function buildCourseListHtml(q) {
+                const displayCourses = hideFinished ? courses.filter(c => isCourseActive(c)) : courses;
+                let clHtml = "";
+                let visibleCount = 0;
+                displayCourses.forEach(c => {
+                    const id = String(c.courseId);
+                    const name = (c.name || "").toLowerCase();
+                    const teacher = (c.teacher || "").toLowerCase();
+                    if (q && !name.includes(q) && !teacher.includes(q)) return;
+                    visibleCount++;
+                    const isActive = isCourseActive(c);
+                    const statusStr = !isActive ? '<span style="color:#6c757d;font-size:11px;margin-left:8px">已结课</span>' : '';
+                    const newBadge = savedSet && !savedSet.has(id) ? '<span style="background:#667eea;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:8px">新</span>' : '';
+                    clHtml += '<label style="display:flex;align-items:center;padding:6px 24px;cursor:pointer;gap:10px;border-bottom:1px solid #f8f9fa" class="cxhw-sel-row">';
+                    clHtml += '<div class="cxhw-cb' + (checked.has(id) ? ' checked' : '') + '" data-cid="' + id + '"></div>';
+                    clHtml += '<span style="font-size:13px;font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escText(c.name) + '</span>';
+                    clHtml += '<span style="font-size:12px;color:#6c757d;min-width:60px">' + escText(c.teacher || '') + '</span>';
+                    clHtml += statusStr + newBadge;
+                    clHtml += '</label>';
+                });
+                if (!visibleCount) clHtml = '<div style="padding:24px;text-align:center;color:#6c757d">无匹配课程</div>';
+                return { html: clHtml, visibleCount, displayCourses };
+            }
+
+            function bindCourseListCheckboxes(container) {
+                container.querySelectorAll(".cxhw-cb[data-cid]").forEach(cb => {
+                    cb.onclick = (e) => {
+                        e.stopPropagation();
+                        const cid = cb.dataset.cid;
+                        if (checked.has(cid)) { checked.delete(cid); cb.classList.remove("checked"); }
+                        else { checked.add(cid); cb.classList.add("checked"); }
+                        document.getElementById("cxhw-sel-count").textContent = checked.size;
+                    };
+                });
+            }
+
             function renderSelector() {
                 const search = document.getElementById("cxhw-sel-search");
                 const q = search ? search.value.trim().toLowerCase() : "";
+                const { html: clHtml, displayCourses } = buildCourseListHtml(q);
+                const hiddenCount = courses.length - displayCourses.length;
                 let html = '<div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;padding:16px 24px;display:flex;justify-content:space-between;align-items:center">';
                 html += '<span style="font-size:16px;font-weight:600">选择要追踪的课程</span>';
                 html += '<button id="cxhw-sel-x" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:15px">&times;</button>';
@@ -474,27 +512,8 @@
                 html += '<label style="margin-left:8px;font-size:12px;color:#6c757d;cursor:pointer;display:flex;align-items:center;gap:4px"><div class="cxhw-cb' + (hideFinished ? ' checked' : '') + '" id="cxhw-sel-hidefin-cb"></div> 隐藏已结课</label>';
                 html += '<input id="cxhw-sel-search" type="text" placeholder="搜索课程名/教师" value="' + escAttr(q) + '" style="margin-left:auto;padding:4px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;width:180px">';
                 html += '</div>';
-                html += '<div style="overflow-y:auto;max-height:calc(85vh - 200px);padding:4px 0">';
-                let visibleCount = 0;
-                const displayCourses = hideFinished ? courses.filter(c => isCourseActive(c)) : courses;
-                const hiddenCount = courses.length - displayCourses.length;
-                displayCourses.forEach(c => {
-                    const id = String(c.courseId);
-                    const name = (c.name || "").toLowerCase();
-                    const teacher = (c.teacher || "").toLowerCase();
-                    if (q && !name.includes(q) && !teacher.includes(q)) return;
-                    visibleCount++;
-                    const isActive = isCourseActive(c);
-                    const statusStr = !isActive ? '<span style="color:#6c757d;font-size:11px;margin-left:8px">已结课</span>' : '';
-                    const newBadge = savedSet && !savedSet.has(id) ? '<span style="background:#667eea;color:#fff;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:8px">新</span>' : '';
-                    html += '<label style="display:flex;align-items:center;padding:6px 24px;cursor:pointer;gap:10px;border-bottom:1px solid #f8f9fa" class="cxhw-sel-row">';
-                    html += '<div class="cxhw-cb' + (checked.has(id) ? ' checked' : '') + '" data-cid="' + id + '"></div>';
-                    html += '<span style="font-size:13px;font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escText(c.name) + '</span>';
-                    html += '<span style="font-size:12px;color:#6c757d;min-width:60px">' + escText(c.teacher || '') + '</span>';
-                    html += statusStr + newBadge;
-                    html += '</label>';
-                });
-                if (!visibleCount) html += '<div style="padding:24px;text-align:center;color:#6c757d">无匹配课程</div>';
+                html += '<div id="cxhw-sel-courselist" style="overflow-y:auto;max-height:calc(85vh - 200px);padding:4px 0">';
+                html += clHtml;
                 html += '</div>';
                 // Fixed footer with confirm button
                 html += '<div style="padding:14px 24px;background:#f8f9fa;border-top:1px solid #e9ecef;display:flex;justify-content:space-between;align-items:center">';
@@ -510,7 +529,7 @@
                 document.getElementById("cxhw-sel-all").onclick = () => { checked = new Set(displayCourses.map(c => String(c.courseId))); renderSelector(); };
                 document.getElementById("cxhw-sel-none").onclick = () => { checked = new Set(); renderSelector(); };
                 document.getElementById("cxhw-sel-active").onclick = () => { checked = new Set(displayCourses.filter(c => isCourseActive(c)).map(c => String(c.courseId))); renderSelector(); };
-                document.getElementById("cxhw-sel-search").oninput = () => renderSelector();
+                document.getElementById("cxhw-sel-search").oninput = () => updateCourseList();
                 document.getElementById("cxhw-sel-hidefin-cb").onclick = () => {
                     hideFinished = !hideFinished;
                     GM_setValue("cxhw_hideFinished", hideFinished);
@@ -533,15 +552,19 @@
                     overlay.style.display = "none";
                     resolve(true);
                 };
-                modal.querySelectorAll(".cxhw-cb[data-cid]").forEach(cb => {
-                    cb.onclick = (e) => {
-                        e.stopPropagation();
-                        const cid = cb.dataset.cid;
-                        if (checked.has(cid)) { checked.delete(cid); cb.classList.remove("checked"); }
-                        else { checked.add(cid); cb.classList.add("checked"); }
-                        document.getElementById("cxhw-sel-count").textContent = checked.size;
-                    };
-                });
+                bindCourseListCheckboxes(modal);
+            }
+
+            function updateCourseList() {
+                const search = document.getElementById("cxhw-sel-search");
+                const q = search ? search.value.trim().toLowerCase() : "";
+                const container = document.getElementById("cxhw-sel-courselist");
+                if (!container) return;
+                const { html: clHtml } = buildCourseListHtml(q);
+                container.innerHTML = clHtml;
+                const countEl = document.getElementById("cxhw-sel-count");
+                if (countEl) countEl.textContent = checked.size;
+                bindCourseListCheckboxes(container);
             }
 
             // Show modal
@@ -844,6 +867,7 @@
         if (!cachedData) return;
         let html = "";
         let count = 0;
+        let renderedCount = 0;
         let errorCount = 0;
         let pendingCount = 0;
         cachedData.forEach(c => {
@@ -858,7 +882,8 @@
             else if (cfilter === "completed") hw = hw.filter(h => isCompleted(h.status));
             // Ignore filter: hide ignored items unless showIgnored is on
             const hwVisible = hw.filter(h => showIgnored || !isIgnored(c.courseId, h));
-            if (!hwVisible.length && !showIgnored) return;
+            if (!hwVisible.length) return;
+            renderedCount += hwVisible.length;
             count += hwVisible.filter(h => !isIgnored(c.courseId, h)).length;
             const pend = c.homework.filter(h => isPending(h.status)).length;
             const wait = c.homework.filter(h => isSubmitted(h.status)).length;
@@ -898,7 +923,7 @@
             });
             html += '</div></div>';
         });
-        if (!count) {
+        if (!renderedCount) {
             html = '<div class="cxhw-em">' +
                 (cfilter === "all" ? "暂无作业数据" : "没有符合条件的作业") +
                 '</div>';
