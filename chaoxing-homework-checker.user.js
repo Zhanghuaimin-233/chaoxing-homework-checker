@@ -248,11 +248,14 @@
             const titleEl = li.querySelector(".overHidden2");
             const statusEl = li.querySelector(".status");
             const timeEl = li.querySelector(".time");
+            const labelEl = li.querySelector(".label");
             if (titleEl) {
                 items.push({
                     title: titleEl.textContent.trim(),
                     status: statusEl ? statusEl.textContent.trim() : "",
                     deadline: timeEl ? timeEl.textContent.trim() : "",
+                    timeNotOver: timeEl ? timeEl.classList.contains("notOver") : false,
+                    isPeerReview: labelEl ? labelEl.textContent.trim() === "互评" : false,
                     url: li.getAttribute("data") || ""
                 });
             }
@@ -272,6 +275,34 @@
         return { items, totalPages };
     }
 
+    async function fetchPeerReviewDeadline(url) {
+        try {
+            const html = await gmFetchWithRetry(url);
+            const doc = parseHTML(html);
+            const hpInfoEl = doc.querySelector(".hpInfo");
+            if (hpInfoEl) {
+                const text = hpInfoEl.textContent.trim();
+                const m = text.match(/至\s*(\d{2}-\d{2}\s+\d{2}:\d{2})/);
+                if (m) return m[1];
+            }
+        } catch (e) {}
+        return null;
+    }
+
+    function isExpired(h) {
+        if (h.isPeerReview) {
+            if (!h.peerReviewEnd) return false;
+            const now = new Date();
+            const m = h.peerReviewEnd.match(/^(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/);
+            if (!m) return false;
+            const end = new Date(now.getFullYear(), parseInt(m[1]) - 1, parseInt(m[2]), parseInt(m[3]), parseInt(m[4]));
+            if (end < now) return true;
+            return false;
+        }
+        if (h.deadline && !h.timeNotOver) return true;
+        return false;
+    }
+
     async function fetchCourseHomework(course) {
         try {
             const workEnc = await fetchWorkEnc(course.courseId, course.classId, course.cpi);
@@ -285,6 +316,13 @@
                 page++;
                 if (page <= total) await delay(CONFIG.requestDelay);
             } while (page <= total);
+            // Fetch peer review deadlines for pending peer review items
+            for (const h of all) {
+                if (h.isPeerReview && isPeerReview(h.status) && h.url) {
+                    h.peerReviewEnd = await fetchPeerReviewDeadline(h.url);
+                    await delay(CONFIG.requestDelay);
+                }
+            }
             return Object.assign({}, course, { homework: all, error: null });
         } catch (e) {
             return Object.assign({}, course, { homework: [], error: e.message });
@@ -756,6 +794,7 @@
                         '<button class="cxhw-filter" data-f="peerreview" role="tab"><span>待互评</span><span class="cxhw-filter-count" data-count="peerreview">0</span></button>' +
                         '<button class="cxhw-filter" data-f="submitted" role="tab"><span>待批阅</span><span class="cxhw-filter-count" data-count="submitted">0</span></button>' +
                         '<button class="cxhw-filter" data-f="completed" role="tab"><span>已完成</span><span class="cxhw-filter-count" data-count="completed">0</span></button>' +
+                        '<button class="cxhw-filter" data-f="expired" role="tab"><span>已过期</span><span class="cxhw-filter-count" data-count="expired">0</span></button>' +
                     '</div>' +
                     '<div class="cxhw-summary"><span>未交</span><strong id="cxhw-pending-total">0</strong><span>项</span><span class="cxhw-summary-sep"></span><span>当前有效项</span><b id="cxhw-count">0</b></div>' +
                 '</div>' +
@@ -940,7 +979,8 @@
             pending: effectiveHomework.filter(h => isPending(h.status)).length,
             peerreview: effectiveHomework.filter(h => isPeerReview(h.status)).length,
             submitted: effectiveHomework.filter(h => isSubmitted(h.status)).length,
-            completed: effectiveHomework.filter(h => isCompleted(h.status)).length
+            completed: effectiveHomework.filter(h => isCompleted(h.status)).length,
+            expired: effectiveHomework.filter(h => isExpired(h)).length
         };
         Object.keys(counts).forEach(name => {
             const el = panel.querySelector('[data-count="' + name + '"]');
@@ -977,6 +1017,7 @@
             else if (cfilter === "submitted") hw = hw.filter(h => isSubmitted(h.status));
             else if (cfilter === "peerreview") hw = hw.filter(h => isPeerReview(h.status));
             else if (cfilter === "completed") hw = hw.filter(h => isCompleted(h.status));
+            else if (cfilter === "expired") hw = hw.filter(h => isExpired(h));
             // Always hide ignored items from main list (managed via modal)
             const hwVisible = hw.filter(h => !isIgnored(c.courseId, h));
             if (!hwVisible.length) return;
@@ -1004,6 +1045,9 @@
                 html += '<span style="color:#856404">' + wait + ' 待批阅</span> ';
             } else if (cfilter === "completed") {
                 html += '<span class="g">' + done + ' 完成</span> ';
+            } else if (cfilter === "expired") {
+                const exp = c.homework.filter(h => isExpired(h)).length;
+                if (exp) html += '<span style="color:#dc3545">' + exp + ' 已过期</span> ';
             }
             html += '<span class="cxhw-ar" aria-hidden="true"></span></span></div>';
             html += '<div class="cxhw-hl">';
