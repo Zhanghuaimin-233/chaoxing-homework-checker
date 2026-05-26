@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         学习通作业统一查看
 // @namespace    https://github.com/chaoxing-homework-checker
-// @version      2.1.1
+// @version      2.2.0
 // @icon         https://raw.githubusercontent.com/Zhanghuaimin-233/chaoxing-homework-checker/main/assets/icon.png
 // @description  检测学习通当前账号所有课程的作业情况并统一显示
 // @author       Assistant
@@ -57,8 +57,6 @@
         .cxhw-tool-primary .cxhw-tool-icon{color:#6875e8}
         .cxhw-tool-badge,.cxhw-course-count{height:18px;min-width:18px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;border-radius:9px;font-size:10px;font-weight:600;background:#eef1f6;color:#778091}
         .cxhw-course-count{background:#e6e9ff;color:#5865dc}
-        #cxhw-showignored.on{background:#f4f5f8;border-color:#dce1ea;color:#404a5c}
-        #cxhw-showignored.on .cxhw-tool-icon{color:#667eea}
         .cxhw-manage-hint{font-size:11px;color:#9aa3b3;margin-left:4px}
         #cxhw-sel-modal .cxhw-fb{padding:5px 14px;border:1px solid #dee2e6;border-radius:16px;background:#fff;cursor:pointer;font-size:13px}
         #cxhw-sel-modal .cxhw-fb.on{background:#667eea;color:#fff;border-color:#667eea}
@@ -90,9 +88,6 @@
         .cxhw-ss-pr{background:#e8daef;color:#6f42c1}
         .cxhw-ss-ok{background:#d4edda;color:#155724}
         .cxhw-ss-ot{background:#e2e3e5;color:#383d41}
-        .cxhw-hi.is-ignored{background:#fbfcfe}
-        .cxhw-hi.is-ignored .cxhw-ht,.cxhw-hi.is-ignored .cxhw-hd{color:#8b93a3}
-        .cxhw-ignored-mark{display:inline-flex;align-items:center;margin-left:7px;padding:1px 7px;border-radius:10px;background:#eef1f6;color:#778091;font-size:10px;font-weight:500;vertical-align:1px}
         .cxhw-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
         .cxhw-ignore-btn{height:27px;display:inline-flex;align-items:center;gap:5px;padding:0 10px;border:1px solid transparent;border-radius:14px;background:#f3f5f9;color:#677181;cursor:pointer;font-size:11px;font-weight:500;white-space:nowrap;transition:background .15s,border-color .15s,color .15s,box-shadow .15s,transform .1s}
         .cxhw-ignore-btn .cxhw-ignore-icon{font-size:13px;line-height:1;color:#97a0af;transition:color .15s}
@@ -100,10 +95,6 @@
         .cxhw-ignore-btn:hover .cxhw-ignore-icon{color:#e05263}
         .cxhw-ignore-btn:active{transform:scale(.97)}
         .cxhw-ignore-btn:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(220,53,69,.14)}
-        .cxhw-ignore-btn.restore{background:#ecf9f0;border-color:#d1efdb;color:#218548}
-        .cxhw-ignore-btn.restore .cxhw-ignore-icon{color:#39a562}
-        .cxhw-ignore-btn.restore:hover{background:#dff5e7;border-color:#a9ddbb;color:#166c37}
-        .cxhw-ignore-btn.restore:focus-visible{box-shadow:0 0 0 3px rgba(40,167,69,.15)}
         .cxhw-ld{padding:60px 24px;text-align:center}
         .cxhw-sp{width:36px;height:36px;border:3px solid #e9ecef;border-top-color:#667eea;border-radius:50%;animation:cxhw-ani 1s linear infinite;margin:0 auto 12px}
         @keyframes cxhw-ani{to{transform:rotate(360deg)}}
@@ -400,7 +391,6 @@
 
     // ===== Ignore Homework =====
     let ignoredHomework = {};
-    let showIgnored = false;
 
     function loadIgnoredHomework() {
         try {
@@ -415,7 +405,6 @@
     }
 
     function getHomeworkKey(courseId, h) {
-        // Parse workId from URL for stable key
         const m = (h.url || "").match(/workId=(\d+)/);
         return m ? courseId + ":" + m[1] : courseId + ":" + h.title;
     }
@@ -426,14 +415,12 @@
 
     function ignoreHomework(courseId, courseName, h) {
         const key = getHomeworkKey(courseId, h);
-        ignoredHomework[key] = { title: h.title, courseName, ignoredAt: Date.now() };
+        ignoredHomework[key] = { title: h.title, courseName, status: h.status, deadline: h.deadline, url: h.url, ignoredAt: Date.now() };
         saveIgnoredHomework();
     }
 
-    function unignoreHomework(courseId, h) {
-        const key = getHomeworkKey(courseId, h);
-        delete ignoredHomework[key];
-        saveIgnoredHomework();
+    function getIgnoredCount() {
+        return Object.keys(ignoredHomework).length;
     }
 
     // ===== Course Selection =====
@@ -581,6 +568,105 @@
         });
     }
 
+    // ===== Ignored Homework Modal =====
+    function showIgnoredModal() {
+        return new Promise(resolve => {
+            let modal = document.getElementById("cxhw-ignored-modal");
+            if (!modal) {
+                modal = document.createElement("div");
+                modal.id = "cxhw-ignored-modal";
+                modal.style.cssText = "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:720px;max-height:85vh;background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);z-index:1000000;display:none;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif";
+                document.body.appendChild(modal);
+
+                // Event delegation: attached once, survives innerHTML re-renders
+                modal.addEventListener("click", e => {
+                    const closeBtn = e.target.closest("#cxhw-ign-x, #cxhw-ign-close");
+                    if (closeBtn) {
+                        modal.style.display = "none";
+                        overlay.style.display = "none";
+                        resolve();
+                        return;
+                    }
+                    const restoreAllBtn = e.target.closest("#cxhw-ign-restoreall");
+                    if (restoreAllBtn) {
+                        ignoredHomework = {};
+                        saveIgnoredHomework();
+                        modal.style.display = "none";
+                        overlay.style.display = "none";
+                        render();
+                        updateToolbarState();
+                        resolve();
+                        return;
+                    }
+                    const restoreBtn = e.target.closest(".cxhw-ign-restore-btn");
+                    if (restoreBtn) {
+                        delete ignoredHomework[restoreBtn.dataset.key];
+                        saveIgnoredHomework();
+                        renderIgnored();
+                        render();
+                        updateToolbarState();
+                    }
+                });
+            }
+
+            function renderIgnored() {
+                const keys = Object.keys(ignoredHomework);
+                const grouped = {};
+                keys.forEach(key => {
+                    const item = ignoredHomework[key];
+                    const cname = item.courseName || "未知课程";
+                    if (!grouped[cname]) grouped[cname] = [];
+                    grouped[cname].push({ key, ...item });
+                });
+                const courseNames = Object.keys(grouped).sort();
+
+                let html = '<div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;padding:16px 24px;display:flex;justify-content:space-between;align-items:center">';
+                html += '<span style="font-size:16px;font-weight:600">已忽略的作业 (' + keys.length + ')</span>';
+                html += '<button id="cxhw-ign-x" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:15px">&times;</button>';
+                html += '</div>';
+
+                if (keys.length === 0) {
+                    html += '<div style="padding:48px 24px;text-align:center;color:#6c757d;font-size:14px">暂无已忽略的作业</div>';
+                } else {
+                    html += '<div style="padding:8px 24px;background:#f8f9fa;border-bottom:1px solid #e9ecef;display:flex;gap:8px;align-items:center">';
+                    html += '<button class="cxhw-fb" id="cxhw-ign-restoreall" style="font-size:12px;padding:4px 12px">全部恢复</button>';
+                    html += '<span style="font-size:12px;color:#6c757d;margin-left:auto">点击「恢复」将作业移回主列表</span>';
+                    html += '</div>';
+                    html += '<div style="overflow-y:auto;max-height:calc(85vh - 200px)">';
+                    courseNames.forEach(cname => {
+                        const items = grouped[cname];
+                        html += '<div style="padding:10px 24px 6px;background:#f8f9fa;font-size:13px;font-weight:600;color:#343a40;border-bottom:1px solid #e9ecef;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escText(cname) + ' <span style="font-weight:400;color:#6c757d;font-size:12px">(' + items.length + ')</span></div>';
+                        items.forEach(item => {
+                            const sc = isPending(item.status) ? "cxhw-ss-nj"
+                                : isPeerReview(item.status) ? "cxhw-ss-pr"
+                                : isSubmitted(item.status) ? "cxhw-ss-dp"
+                                : isCompleted(item.status) ? "cxhw-ss-ok" : "cxhw-ss-ot";
+                            html += '<div style="padding:10px 24px 10px 36px;border-bottom:1px solid #f1f3f5;display:flex;justify-content:space-between;align-items:center;gap:12px">';
+                            html += '<div style="flex:1;min-width:0">';
+                            html += '<div style="font-size:13px;color:#343a40;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escText(item.title) + '</div>';
+                            if (item.deadline) html += '<div style="font-size:11px;color:#6c757d;margin-top:2px">&#9200; ' + escText(item.deadline) + '</div>';
+                            html += '</div>';
+                            html += '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">';
+                            if (item.status) html += '<span class="cxhw-ss ' + sc + '">' + escText(item.status) + '</span>';
+                            html += '<button class="cxhw-ign-restore-btn" data-key="' + escAttr(item.key) + '" style="height:27px;display:inline-flex;align-items:center;gap:5px;padding:0 10px;border:1px solid #d1efdb;border-radius:14px;background:#ecf9f0;color:#218548;cursor:pointer;font-size:11px;font-weight:500;white-space:nowrap">&#8634; 恢复</button>';
+                            html += '</div></div>';
+                        });
+                    });
+                    html += '</div>';
+                }
+
+                html += '<div style="padding:14px 24px;background:#f8f9fa;border-top:1px solid #e9ecef;text-align:right">';
+                html += '<button class="cxhw-fb on" id="cxhw-ign-close" style="padding:6px 18px">关闭</button>';
+                html += '</div>';
+                modal.innerHTML = html;
+            }
+
+            modal.style.display = "block";
+            overlay.style.display = "block";
+            renderIgnored();
+        });
+    }
+
     // ===== Auto Refresh =====
     let autoRefreshOnLoad = GM_getValue("cxhw_autoRefreshOnLoad", true);  // default ON
     let autoRefreshInterval = GM_getValue("cxhw_autoRefreshInterval", 0);  // 0 = OFF, minutes
@@ -635,7 +721,22 @@
 
         overlay = document.createElement("div");
         overlay.id = "cxhw-overlay";
-        overlay.onclick = toggle;
+        overlay.onclick = () => {
+            // Close any open modal instead of toggling the main panel
+            const ignoredModal = document.getElementById("cxhw-ignored-modal");
+            const selModal = document.getElementById("cxhw-sel-modal");
+            if (ignoredModal && ignoredModal.style.display === "block") {
+                ignoredModal.style.display = "none";
+                overlay.style.display = "none";
+                return;
+            }
+            if (selModal && selModal.style.display === "block") {
+                selModal.style.display = "none";
+                overlay.style.display = "none";
+                return;
+            }
+            toggle();
+        };
         document.body.appendChild(overlay);
 
         panel = document.createElement("div");
@@ -661,7 +762,7 @@
                 '<div class="cxhw-tb-actions">' +
                     '<span class="cxhw-tools-label">管理</span>' +
                     '<button class="cxhw-tool cxhw-tool-primary" id="cxhw-coursesel"><span class="cxhw-tool-icon">&#9776;</span><span>选择课程</span><span class="cxhw-course-count" id="cxhw-selected-count">0</span></button>' +
-                    '<button class="cxhw-tool" id="cxhw-showignored"><span class="cxhw-tool-icon">&#8856;</span><span id="cxhw-ignore-label">显示已忽略</span><span class="cxhw-tool-badge" id="cxhw-ignored-count">0</span></button>' +
+                    '<button class="cxhw-tool" id="cxhw-showignored"><span class="cxhw-tool-icon">&#8856;</span><span>已忽略作业</span><span class="cxhw-tool-badge" id="cxhw-ignored-count">0</span></button>' +
                     '<button class="cxhw-tool" id="cxhw-expand"><span class="cxhw-tool-icon" id="cxhw-expand-icon">&#9662;</span><span id="cxhw-expand-label">展开全部</span></button>' +
                     '<span class="cxhw-manage-hint">只展示已选择课程中的作业</span>' +
                 '</div>' +
@@ -742,11 +843,9 @@
             };
         });
 
-        // Show/hide ignored homework toggle
-        document.getElementById("cxhw-showignored").onclick = function() {
-            showIgnored = !showIgnored;
-            this.classList.toggle("on", showIgnored);
-            render();
+        // Open ignored homework modal
+        document.getElementById("cxhw-showignored").onclick = () => {
+            showIgnoredModal();
         };
 
         // Expand/collapse all courses currently visible in the list.
@@ -776,24 +875,18 @@
         // Event delegation for course headers and homework items
         const body = document.getElementById("cxhw-body");
         body.addEventListener("click", e => {
-            // Ignore/unignore button
+            // Ignore button (main list only has ignore, not unignore)
             const ignoreBtn = e.target.closest(".cxhw-ignore-btn");
             if (ignoreBtn) {
                 e.stopPropagation();
-                const action = ignoreBtn.dataset.action;
-                const cid = ignoreBtn.dataset.cid;
-                if (action === "ignore") {
-                    ignoreHomework(cid, ignoreBtn.dataset.cname, {
-                        title: ignoreBtn.dataset.title,
-                        url: ignoreBtn.dataset.url
-                    });
-                } else if (action === "unignore") {
-                    // Find homework object from cachedData to pass to unignoreHomework
-                    const key = ignoreBtn.dataset.key;
-                    delete ignoredHomework[key];
-                    saveIgnoredHomework();
-                }
+                ignoreHomework(ignoreBtn.dataset.cid, ignoreBtn.dataset.cname, {
+                    title: ignoreBtn.dataset.title,
+                    url: ignoreBtn.dataset.url,
+                    status: ignoreBtn.closest(".cxhw-hi")?.querySelector(".cxhw-ss")?.textContent || "",
+                    deadline: ignoreBtn.closest(".cxhw-hi")?.querySelector(".cxhw-hd")?.textContent?.replace(/^⏰\s*/, "") || ""
+                });
                 render();
+                updateToolbarState();
                 return;
             }
             // Course header toggle
@@ -836,12 +929,10 @@
     function updateToolbarState() {
         if (!panel) return;
         const effectiveHomework = [];
-        const ignoredHomeworkItems = [];
         (cachedData || []).forEach(c => {
             if (c.hwPending || c.error || !Array.isArray(c.homework)) return;
             c.homework.forEach(h => {
-                if (isIgnored(c.courseId, h)) ignoredHomeworkItems.push(h);
-                else effectiveHomework.push(h);
+                if (!isIgnored(c.courseId, h)) effectiveHomework.push(h);
             });
         });
         const counts = {
@@ -860,11 +951,7 @@
         const selectedEl = document.getElementById("cxhw-selected-count");
         if (selectedEl) selectedEl.textContent = cachedData ? cachedData.length : 0;
         const ignoredEl = document.getElementById("cxhw-ignored-count");
-        if (ignoredEl) ignoredEl.textContent = ignoredHomeworkItems.length;
-        const ignoredLabel = document.getElementById("cxhw-ignore-label");
-        if (ignoredLabel) ignoredLabel.textContent = showIgnored ? "隐藏已忽略" : "显示已忽略";
-        const ignoredBtn = document.getElementById("cxhw-showignored");
-        if (ignoredBtn) ignoredBtn.classList.toggle("on", showIgnored);
+        if (ignoredEl) ignoredEl.textContent = getIgnoredCount();
         const headers = Array.from(panel.querySelectorAll("#cxhw-body .cxhw-ch"));
         const allOpen = headers.length > 0 && headers.every(ch => ch.classList.contains("open"));
         const expandLabel = document.getElementById("cxhw-expand-label");
@@ -890,11 +977,11 @@
             else if (cfilter === "submitted") hw = hw.filter(h => isSubmitted(h.status));
             else if (cfilter === "peerreview") hw = hw.filter(h => isPeerReview(h.status));
             else if (cfilter === "completed") hw = hw.filter(h => isCompleted(h.status));
-            // Ignore filter: hide ignored items unless showIgnored is on
-            const hwVisible = hw.filter(h => showIgnored || !isIgnored(c.courseId, h));
+            // Always hide ignored items from main list (managed via modal)
+            const hwVisible = hw.filter(h => !isIgnored(c.courseId, h));
             if (!hwVisible.length) return;
             renderedCount += hwVisible.length;
-            count += hwVisible.filter(h => !isIgnored(c.courseId, h)).length;
+            count += hwVisible.length;
             const pend = c.homework.filter(h => isPending(h.status)).length;
             const wait = c.homework.filter(h => isSubmitted(h.status)).length;
             const peer = c.homework.filter(h => isPeerReview(h.status)).length;
@@ -904,31 +991,36 @@
             html += '<div class="cxhw-ch' + (expandedCourseIds.has(String(c.courseId)) ? ' open' : '') + '" data-cid="' + escAttr(String(c.courseId)) + '">';
             html += '<span class="cxhw-cn"><a href="' + courseUrl + '" target="_blank" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none;">' + escText(c.name) + '</a></span>';
             html += '<span class="cxhw-ci">';
-            if (pend) html += '<span class="r">' + pend + ' 未交</span> ';
-            if (peer) html += '<span style="color:#6f42c1">' + peer + ' 待互评</span> ';
-            if (wait) html += '<span style="color:#856404">' + wait + ' 待批阅</span> ';
-            html += '<span class="g">' + done + ' 完成</span> ';
+            if (cfilter === "all") {
+                if (pend) html += '<span class="r">' + pend + ' 未交</span> ';
+                if (peer) html += '<span style="color:#6f42c1">' + peer + ' 待互评</span> ';
+                if (wait) html += '<span style="color:#856404">' + wait + ' 待批阅</span> ';
+                html += '<span class="g">' + done + ' 完成</span> ';
+            } else if (cfilter === "pending" && pend) {
+                html += '<span class="r">' + pend + ' 未交</span> ';
+            } else if (cfilter === "peerreview" && peer) {
+                html += '<span style="color:#6f42c1">' + peer + ' 待互评</span> ';
+            } else if (cfilter === "submitted" && wait) {
+                html += '<span style="color:#856404">' + wait + ' 待批阅</span> ';
+            } else if (cfilter === "completed") {
+                html += '<span class="g">' + done + ' 完成</span> ';
+            }
             html += '<span class="cxhw-ar" aria-hidden="true"></span></span></div>';
             html += '<div class="cxhw-hl">';
             hwVisible.forEach(h => {
-                const ignored = isIgnored(c.courseId, h);
                 const sc = isPending(h.status) ? "cxhw-ss-nj"
                     : isPeerReview(h.status) ? "cxhw-ss-pr"
                     : isSubmitted(h.status) ? "cxhw-ss-dp"
                     : isCompleted(h.status) ? "cxhw-ss-ok" : "cxhw-ss-ot";
                 const hwUrl = h.url ? safeUrl(h.url) : "";
-                html += '<div class="cxhw-hi' + (ignored ? ' is-ignored' : '') + '"' + (hwUrl ? ' data-url="' + escAttr(hwUrl) + '"' : '') + '>';
+                html += '<div class="cxhw-hi"' + (hwUrl ? ' data-url="' + escAttr(hwUrl) + '"' : '') + '>';
                 html += '<div style="flex:1;min-width:0">';
-                html += '<div class="cxhw-ht">' + escText(h.title) + (ignored ? ' <span class="cxhw-ignored-mark">已忽略</span>' : '') + '</div>';
+                html += '<div class="cxhw-ht">' + escText(h.title) + '</div>';
                 if (h.deadline) html += '<div class="cxhw-hd">&#9200; ' + escText(h.deadline) + '</div>';
                 html += '</div>';
                 html += '<div class="cxhw-actions">';
                 html += '<span class="cxhw-ss ' + sc + '">' + escText(h.status) + '</span>';
-                if (ignored) {
-                    html += '<button class="cxhw-ignore-btn restore" data-action="unignore" data-cid="' + c.courseId + '" data-key="' + escAttr(getHomeworkKey(c.courseId, h)) + '" title="恢复显示该作业" aria-label="恢复显示：' + escAttr(h.title) + '"><span class="cxhw-ignore-icon" aria-hidden="true">&#8634;</span><span>恢复</span></button>';
-                } else {
-                    html += '<button class="cxhw-ignore-btn" data-action="ignore" data-cid="' + c.courseId + '" data-cname="' + escAttr(c.name) + '" data-key="' + escAttr(getHomeworkKey(c.courseId, h)) + '" data-title="' + escAttr(h.title) + '" data-url="' + escAttr(h.url || '') + '" title="隐藏此作业，不计入当前待办" aria-label="忽略：' + escAttr(h.title) + '"><span class="cxhw-ignore-icon" aria-hidden="true">&#8856;</span><span>忽略</span></button>';
-                }
+                html += '<button class="cxhw-ignore-btn" data-action="ignore" data-cid="' + c.courseId + '" data-cname="' + escAttr(c.name) + '" data-key="' + escAttr(getHomeworkKey(c.courseId, h)) + '" data-title="' + escAttr(h.title) + '" data-url="' + escAttr(h.url || '') + '" title="隐藏此作业，不计入当前待办" aria-label="忽略：' + escAttr(h.title) + '"><span class="cxhw-ignore-icon" aria-hidden="true">&#8856;</span><span>忽略</span></button>';
                 html += '</div></div>';
             });
             html += '</div></div>';
