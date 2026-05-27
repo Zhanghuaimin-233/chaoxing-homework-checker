@@ -621,7 +621,7 @@
 
                 // Event delegation: attached once, survives innerHTML re-renders
                 modal.addEventListener("click", e => {
-                    const closeBtn = e.target.closest("#cxhw-ign-x, #cxhw-ign-close");
+                    const closeBtn = e.target.closest("#cxhw-ign-x");
                     if (closeBtn) {
                         modal.style.display = "none";
                         overlay.style.display = "none";
@@ -696,9 +696,6 @@
                     html += '</div>';
                 }
 
-                html += '<div style="padding:14px 24px;background:#f8f9fa;border-top:1px solid #e9ecef;text-align:right">';
-                html += '<button class="cxhw-fb on" id="cxhw-ign-close" style="padding:6px 18px">关闭</button>';
-                html += '</div>';
                 modal.innerHTML = html;
             }
 
