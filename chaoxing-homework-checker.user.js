@@ -290,15 +290,18 @@
     }
 
     function isExpired(h) {
+        // Peer review: check deadline from detail page
         if (h.isPeerReview) {
             if (!h.peerReviewEnd) return false;
             const now = new Date();
             const m = h.peerReviewEnd.match(/^(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/);
             if (!m) return false;
             const end = new Date(now.getFullYear(), parseInt(m[1]) - 1, parseInt(m[2]), parseInt(m[3]), parseInt(m[4]));
-            if (end < now) return true;
-            return false;
+            return end < now;
         }
+        // Regular homework: .time element removed when expired, status stays "未交"
+        if (isPending(h.status) && !h.deadline) return true;
+        // .time exists but notOver class missing (edge case)
         if (h.deadline && !h.timeNotOver) return true;
         return false;
     }

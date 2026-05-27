@@ -115,6 +115,7 @@
   </div>
 
   <!-- 截止时间（仅未过期的普通作业） -->
+  <!-- ⚠️ 已过期的作业：.time 元素被完全移除，status 仍为"未交" -->
   <div class="time notOver" tabindex="0">
     <img src="//mooc1.chaoxing.com/mooc-ans/mooc2/images/endTime.png">
     剩余90小时37分钟
@@ -155,9 +156,20 @@
 - class 含 `notOver` 表示未过期
 - 文本格式：`剩余X小时Y分钟`
 
-**已过期作业**: class 不含 `notOver`（具体格式未验证，当前账号无过期作业）
+**已过期作业**: `.time` 元素被**完全移除**（不是 class 变化），status 仍为"未交"
+```html
+<!-- 已过期的作业：无 .time 元素 -->
+<li data="...">
+  <div class="tag icon-zy-g"></div>
+  <div class="right-content">
+    <p class="overHidden2 fl">作业标题</p>
+    <p class="status fl">未交</p>
+  </div>
+  <div class="clearfix"></div>
+</li>
+```
 
-**无截止时间**: 不存在 `.time` 元素（如已提交的作业）
+**无截止时间**: 不存在 `.time` 元素（如已提交的作业，或已过期的作业）
 
 ### 3.5 互评详情页
 
