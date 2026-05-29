@@ -976,10 +976,10 @@
         });
         const counts = {
             all: effectiveHomework.length,
-            pending: effectiveHomework.filter(h => isPending(h.status)).length,
-            peerreview: effectiveHomework.filter(h => isPeerReview(h.status)).length,
-            submitted: effectiveHomework.filter(h => isSubmitted(h.status)).length,
-            completed: effectiveHomework.filter(h => isCompleted(h.status)).length,
+            pending: effectiveHomework.filter(h => isPending(h.status) && !isExpired(h)).length,
+            peerreview: effectiveHomework.filter(h => isPeerReview(h.status) && !isExpired(h)).length,
+            submitted: effectiveHomework.filter(h => isSubmitted(h.status) && !isExpired(h)).length,
+            completed: effectiveHomework.filter(h => isCompleted(h.status) && !isExpired(h)).length,
             expired: effectiveHomework.filter(h => isExpired(h)).length
         };
         Object.keys(counts).forEach(name => {
@@ -1026,31 +1026,30 @@
             renderedCount += hwVisible.length;
             count += hwVisible.length;
             const effective = c.homework.filter(h => !isIgnored(c.courseId, h));
-            const pend = effective.filter(h => isPending(h.status)).length;
-            const wait = effective.filter(h => isSubmitted(h.status)).length;
-            const peer = effective.filter(h => isPeerReview(h.status)).length;
-            const done = effective.filter(h => isCompleted(h.status)).length;
             const courseUrl = safeUrl(buildCourseUrl(c));
             html += '<div class="cxhw-cs">';
             html += '<div class="cxhw-ch' + (expandedCourseIds.has(String(c.courseId)) ? ' open' : '') + '" data-cid="' + escAttr(String(c.courseId)) + '">';
             html += '<span class="cxhw-cn"><a href="' + courseUrl + '" target="_blank" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none;">' + escText(c.name) + '</a></span>';
             html += '<span class="cxhw-ci">';
             if (cfilter === "all") {
-                if (pend) html += '<span class="r">' + pend + ' 未交</span> ';
-                if (peer) html += '<span style="color:#6f42c1">' + peer + ' 待互评</span> ';
-                if (wait) html += '<span style="color:#856404">' + wait + ' 待批阅</span> ';
-                html += '<span class="g">' + done + ' 完成</span> ';
-            } else if (cfilter === "pending" && pend) {
-                html += '<span class="r">' + pend + ' 未交</span> ';
-            } else if (cfilter === "peerreview" && peer) {
-                html += '<span style="color:#6f42c1">' + peer + ' 待互评</span> ';
-            } else if (cfilter === "submitted" && wait) {
-                html += '<span style="color:#856404">' + wait + ' 待批阅</span> ';
+                const pendNE = effective.filter(h => isPending(h.status) && !isExpired(h)).length;
+                const peerNE = effective.filter(h => isPeerReview(h.status) && !isExpired(h)).length;
+                const waitNE = effective.filter(h => isSubmitted(h.status) && !isExpired(h)).length;
+                if (pendNE) html += '<span class="r">' + pendNE + ' 未交</span> ';
+                if (peerNE) html += '<span style="color:#6f42c1">' + peerNE + ' 待互评</span> ';
+                if (waitNE) html += '<span style="color:#856404">' + waitNE + ' 待批阅</span> ';
+                const doneNE = effective.filter(h => isCompleted(h.status)).length;
+                html += '<span class="g">' + doneNE + ' 完成</span> ';
+            } else if (cfilter === "pending") {
+                if (hwVisible.length) html += '<span class="r">' + hwVisible.length + ' 未交</span> ';
+            } else if (cfilter === "peerreview") {
+                if (hwVisible.length) html += '<span style="color:#6f42c1">' + hwVisible.length + ' 待互评</span> ';
+            } else if (cfilter === "submitted") {
+                if (hwVisible.length) html += '<span style="color:#856404">' + hwVisible.length + ' 待批阅</span> ';
             } else if (cfilter === "completed") {
-                html += '<span class="g">' + done + ' 完成</span> ';
+                if (hwVisible.length) html += '<span class="g">' + hwVisible.length + ' 完成</span> ';
             } else if (cfilter === "expired") {
-                const exp = effective.filter(h => isExpired(h)).length;
-                if (exp) html += '<span style="color:#dc3545">' + exp + ' 已过期</span> ';
+                if (hwVisible.length) html += '<span style="color:#dc3545">' + hwVisible.length + ' 已过期</span> ';
             }
             html += '<span class="cxhw-ar" aria-hidden="true"></span></span></div>';
             html += '<div class="cxhw-hl">';
