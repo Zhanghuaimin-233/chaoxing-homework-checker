@@ -1018,15 +1018,18 @@
             else if (cfilter === "peerreview") hw = hw.filter(h => isPeerReview(h.status));
             else if (cfilter === "completed") hw = hw.filter(h => isCompleted(h.status));
             else if (cfilter === "expired") hw = hw.filter(h => isExpired(h));
+            // Exclude expired items from other filters (only shown in "全部" and "已过期")
+            if (cfilter !== "all" && cfilter !== "expired") hw = hw.filter(h => !isExpired(h));
             // Always hide ignored items from main list (managed via modal)
             const hwVisible = hw.filter(h => !isIgnored(c.courseId, h));
             if (!hwVisible.length) return;
             renderedCount += hwVisible.length;
             count += hwVisible.length;
-            const pend = c.homework.filter(h => isPending(h.status)).length;
-            const wait = c.homework.filter(h => isSubmitted(h.status)).length;
-            const peer = c.homework.filter(h => isPeerReview(h.status)).length;
-            const done = c.homework.filter(h => isCompleted(h.status)).length;
+            const effective = c.homework.filter(h => !isIgnored(c.courseId, h));
+            const pend = effective.filter(h => isPending(h.status)).length;
+            const wait = effective.filter(h => isSubmitted(h.status)).length;
+            const peer = effective.filter(h => isPeerReview(h.status)).length;
+            const done = effective.filter(h => isCompleted(h.status)).length;
             const courseUrl = safeUrl(buildCourseUrl(c));
             html += '<div class="cxhw-cs">';
             html += '<div class="cxhw-ch' + (expandedCourseIds.has(String(c.courseId)) ? ' open' : '') + '" data-cid="' + escAttr(String(c.courseId)) + '">';
@@ -1046,7 +1049,7 @@
             } else if (cfilter === "completed") {
                 html += '<span class="g">' + done + ' 完成</span> ';
             } else if (cfilter === "expired") {
-                const exp = c.homework.filter(h => isExpired(h)).length;
+                const exp = effective.filter(h => isExpired(h)).length;
                 if (exp) html += '<span style="color:#dc3545">' + exp + ' 已过期</span> ';
             }
             html += '<span class="cxhw-ar" aria-hidden="true"></span></span></div>';
