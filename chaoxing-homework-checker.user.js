@@ -1039,7 +1039,9 @@
                 if (peerNE) html += '<span style="color:#6f42c1">' + peerNE + ' 待互评</span> ';
                 if (waitNE) html += '<span style="color:#856404">' + waitNE + ' 待批阅</span> ';
                 const doneNE = effective.filter(h => isCompleted(h.status)).length;
+                const expNE = effective.filter(h => isExpired(h)).length;
                 html += '<span class="g">' + doneNE + ' 完成</span> ';
+                if (expNE) html += '<span style="color:#dc3545">' + expNE + ' 已过期</span> ';
             } else if (cfilter === "pending") {
                 if (hwVisible.length) html += '<span class="r">' + hwVisible.length + ' 未交</span> ';
             } else if (cfilter === "peerreview") {
