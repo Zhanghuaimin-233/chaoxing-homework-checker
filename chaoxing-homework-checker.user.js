@@ -740,7 +740,6 @@
     let hideFinished = GM_getValue("cxhw_hideFinished", false);
 
     function isCourseActive(course) {
-        if (course.isretire === 1) return false;
         if (course.endDate) {
             const end = new Date(course.endDate).getTime();
             if (end < Date.now()) return false;
