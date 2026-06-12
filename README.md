@@ -32,6 +32,10 @@
 
 ## 安装
 
+安装油猴脚本->  [(GreasyFork) 学习通作业统一查看](https://greasyfork.org/zh-CN/scripts/579628)
+
+或手动安装：
+
 1. 安装 [Tampermonkey](https://www.tampermonkey.net/) 浏览器扩展
 2. 点击 Tampermonkey 图标 → 创建新脚本
 3. 清空编辑器内容，粘贴 `chaoxing-homework-checker.user.js` 全部内容
@@ -92,7 +96,6 @@
 降低风控风险的建议：
 - 使用课程选择功能，追踪课程不超过 12 门
 - 避免短时间内频繁手动刷新
-- 开启「隐藏已结课」减少无效请求
 
 ## 限制
 
@@ -116,20 +119,3 @@ chaoxing-homework-checker/
 └── README.md
 ```
 
-## 开发历程
-
-开发工具：Claude Code + Codex (GPT-5.5) 协作
-
-1. 通过 CDP Proxy 连接用户 Chrome，获取学习通登录态
-2. 探索课程列表 API（JSON 接口，直接可用）
-3. 尝试作业列表 JSON API → 返回 403，不可用
-4. 通过 Codex 探索发现 workEnc 机制：需先从课程页提取加密令牌
-5. 确认作业列表为 HTML 接口，解析 `<li>` 元素获取作业数据
-6. 生成完整用户脚本
-7. 经过 5 轮 Codex 审查，累计修复 55+ 个问题（XSS、竞态、类型安全、缓存架构等）
-8. 重构为两层缓存架构，hideFinished 真正跳过已结课课程请求
-9. 添加课程选择功能，减少请求量以避免风控
-10. 添加待互评/已互评状态支持，繁简体适配
-11. 添加自动刷新（页面加载 + 定时），使用 sessionStorage + Navigation API 智能判断
-12. v2.0.2：UI 重构（分段筛选标签页、摘要栏、工具按钮、展开状态持久化、忽略按钮重设计）
-13. v2.1.0：修复搜索输入 IME 问题、showIgnored 过滤逻辑 bug、箭头方向调整、代码去重
