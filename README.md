@@ -5,7 +5,7 @@
 ![alt text](assets/image1.png)
 ![alt text](assets/image2.png)
 
-**当前版本**: 2.2.0
+**当前版本**: 2.2.1
 
 ## 功能特性
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         学习通作业统一查看
 // @namespace    https://github.com/chaoxing-homework-checker
-// @version      2.2.0
+// @version      2.2.1
 // @icon         https://raw.githubusercontent.com/Zhanghuaimin-233/chaoxing-homework-checker/main/assets/icon.png
 // @description  检测学习通当前账号所有课程的作业情况并统一显示
 // @author       Assistant
@@ -24,6 +24,8 @@
     if (window !== window.top) return;
 
     const CONFIG = { concurrency: 3, requestDelay: 500, cacheTime: 30 * 60 * 1000, requestTimeout: 15000, maxRetries: 2 };
+    const INTERNAL_OPEN_SKIP_KEY = "cxhw_internal_open_until";
+    const INTERNAL_OPEN_SKIP_MS = 15000;
 
     // ===== Styles =====
     GM_addStyle(`
@@ -179,6 +181,27 @@
             const parsed = new URL(u);
             return (parsed.protocol === "https:" || parsed.protocol === "http:") ? u : "";
         } catch { return ""; }
+    }
+
+    function isChaoxingUrl(u) {
+        try {
+            const host = new URL(u).hostname.toLowerCase();
+            return host === "chaoxing.com" || host.endsWith(".chaoxing.com");
+        } catch { return false; }
+    }
+
+    function markInternalOpen(url) {
+        if (!isChaoxingUrl(url)) return;
+        try { GM_setValue(INTERNAL_OPEN_SKIP_KEY, Date.now() + INTERNAL_OPEN_SKIP_MS); } catch (e) {}
+    }
+
+    function shouldAutoRefreshOnLoad(opts) {
+        if (!opts.autoRefreshOnLoad) return false;
+        if (opts.isReload) return true;
+        if (opts.storedUrl) return false;
+        if ((+opts.internalOpenUntil || 0) > opts.now) return false;
+        if (isChaoxingUrl(opts.referrer) && isChaoxingUrl(opts.currentUrl)) return false;
+        return true;
     }
 
     function buildCourseUrl(c) {
@@ -913,6 +936,11 @@
         // Event delegation for course headers and homework items
         const body = document.getElementById("cxhw-body");
         body.addEventListener("click", e => {
+            const internalLink = e.target.closest("a[data-cxhw-open]");
+            if (internalLink) {
+                markInternalOpen(internalLink.href);
+                return;
+            }
             // Ignore button (main list only has ignore, not unignore)
             const ignoreBtn = e.target.closest(".cxhw-ignore-btn");
             if (ignoreBtn) {
@@ -941,7 +969,10 @@
             const hi = e.target.closest(".cxhw-hi[data-url]");
             if (hi && !isIgnored(hi.dataset.cid, {url: hi.getAttribute("data-url")})) {
                 const url = safeUrl(hi.getAttribute("data-url"));
-                if (url) window.open(url, "_blank");
+                if (url) {
+                    markInternalOpen(url);
+                    window.open(url, "_blank");
+                }
             }
         });
 
@@ -1028,7 +1059,7 @@
             const courseUrl = safeUrl(buildCourseUrl(c));
             html += '<div class="cxhw-cs">';
             html += '<div class="cxhw-ch' + (expandedCourseIds.has(String(c.courseId)) ? ' open' : '') + '" data-cid="' + escAttr(String(c.courseId)) + '">';
-            html += '<span class="cxhw-cn"><a href="' + courseUrl + '" target="_blank" onclick="event.stopPropagation()" style="color:inherit;text-decoration:none;">' + escText(c.name) + '</a></span>';
+            html += '<span class="cxhw-cn"><a href="' + courseUrl + '" target="_blank" data-cxhw-open="1" style="color:inherit;text-decoration:none;">' + escText(c.name) + '</a></span>';
             html += '<span class="cxhw-ci">';
             if (cfilter === "all") {
                 const pendNE = effective.filter(h => isPending(h.status) && !isExpired(h)).length;
@@ -1201,22 +1232,19 @@
         const storedUrl = sessionStorage.getItem("cxhw_loaded");
         sessionStorage.setItem("cxhw_loaded", location.href);
 
-        if (autoRefreshOnLoad) {
-            if (isReload) {
-                // F5 or browser reload button — always refresh
-                doRefresh();
-                return;
-            }
-            if (!storedUrl) {
-                // First load in this tab
-                if (!document.referrer || !document.referrer.startsWith(location.origin)) {
-                    // Fresh browser tab (address bar, bookmark, external link) — refresh
-                    doRefresh();
-                    return;
-                }
-                // Same-origin referrer = opened from 学习通 link — skip
-            }
-            // In-tab navigation or new tab from platform — skip
+        const internalOpenUntil = +GM_getValue(INTERNAL_OPEN_SKIP_KEY, 0) || 0;
+        if (shouldAutoRefreshOnLoad({
+            autoRefreshOnLoad,
+            isReload,
+            storedUrl,
+            referrer: document.referrer,
+            currentUrl: location.href,
+            internalOpenUntil,
+            now: Date.now()
+        })) {
+            // F5/external first entry refreshes; platform/plugin-opened tabs do not.
+            doRefresh();
+            return;
         }
 
         // Only auto-fetch on first visit (no cache at all). Expired cache is
